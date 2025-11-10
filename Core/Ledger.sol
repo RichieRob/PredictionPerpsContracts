@@ -70,6 +70,33 @@ contract MarketMakerLedger {
         positionId = MarketManagementLib.createPosition(marketId, name, ticker);
     }
 
+    /// @notice Batch-create multiple positions for a market.
+    /// @param marketId The market ID to add positions to.
+    /// @param names Array of position names (must match tickers.length).
+    /// @param tickers Array of position tickers (must match names.length).
+    /// @return positionIds Array of newly created position IDs in order.
+    
+    struct PositionMeta {
+    string name;
+    string ticker;
+    }
+
+    function createPositions(
+    uint256 marketId,
+    PositionMeta[] memory positions
+    ) external onlyOwner returns (uint256[] memory positionIds) {
+    require(positions.length > 0, "No positions provided");
+
+    positionIds = new uint256[](positions.length);
+    for (uint256 i = 0; i < positions.length; i++) {
+        positionIds[i] = MarketManagementLib.createPosition(
+            marketId,
+            positions[i].name,
+            positions[i].ticker
+        );
+     }
+    }
+
     function addPositionToExpandingMarket(uint256 marketId, string memory name, string memory ticker) external onlyOwner { MarketManagementLib.splitFromOther(marketId, name, ticker); }
 
     // --- owner finance ops ---

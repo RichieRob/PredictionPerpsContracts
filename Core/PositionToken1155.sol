@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -9,14 +8,21 @@ import "./LedgerLibraries/Types.sol";
 import "./LedgerLibraries/StorageLib.sol";
 
 contract PositionToken1155 is ERC1155 {
-    address public immutable ledger;
+    address public ledger;
+    address public owner;
     mapping(uint256 => string) public marketNames;
     mapping(uint256 => string) public marketTickers;
     mapping(uint256 => string) public positionNames;
     mapping(uint256 => string) public positionTickers;
     mapping(uint256 => bool) public isBack;
 
-    constructor(address _ledger) ERC1155("") {
+    constructor(address _owner) ERC1155("") {
+        owner = _owner;
+    }
+
+    function setLedger(address _ledger) external {
+        require(msg.sender == owner, "Only owner");
+        require(ledger == address(0), "Already set");
         ledger = _ledger;
     }
 

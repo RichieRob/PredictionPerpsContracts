@@ -63,6 +63,12 @@ library StorageLib {
 
         //allowed DMM mapping
         mapping(uint256 => bool) allowedDMMs; // mmId => is allowed as DMM
+
+        //Fee skimming
+        address feeRecipient;          // where fees go
+        uint16  feeBps;                // e.g. 3 = 0.03%
+        bool    feeEnabled;            // on/off
+
     }
 
     function getStorage() internal pure returns (Storage storage s) {

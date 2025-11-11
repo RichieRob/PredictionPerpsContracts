@@ -18,6 +18,8 @@ import "./LedgerLibraries/LedgerLib.sol";
 import "./LedgerLibraries/TradingLib.sol";
 import "./LedgerLibraries/RedemptionLib.sol";
 import "../Interfaces/IPositionToken1155.sol";
+import "./LedgerLibraries/ProtocolFeeLib.sol";
+
 
 contract MarketMakerLedger {
     using DepositWithdrawLib for *;
@@ -221,7 +223,7 @@ contract MarketMakerLedger {
         return MarketManagementLib.positionExists(marketId, positionId);
     }
 
-}
+
 
 // --- allowlist for DMMs ---
     function allowDMM(uint256 mmId, bool allowed) external onlyOwner {
@@ -230,3 +232,12 @@ contract MarketMakerLedger {
         emit DMMAllowed(mmId, allowed);
     }
 
+        /*//////////////////////////////////////////////////////////////
+                                   Turn on/off fees
+    //////////////////////////////////////////////////////////////*/
+
+    function setFeeConfig(address recipient, uint16 bps, bool enabled) external onlyOwner {
+    ProtocolFeeLib.setFeeConfig(recipient, bps, enabled);
+}
+
+}

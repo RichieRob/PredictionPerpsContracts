@@ -9,6 +9,7 @@ import "./HeapLib.sol";
 import "./TokenOpsLib.sol";
 import "./LedgerLib.sol";
 import "./TypesPermit.sol";
+import "./MarketManagementLib.sol";
 
 library TradingLib {
     using TypesPermit for *;
@@ -58,6 +59,8 @@ library TradingLib {
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.mmIdToAddress[mmId] == msg.sender, "Invalid MMId");
+        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+
 
         if (usdcIn > 0) {
             if (usePermit2) {
@@ -97,6 +100,8 @@ library TradingLib {
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.mmIdToAddress[mmId] == msg.sender, "Invalid MMId");
+        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+
 
         // Burn incoming tokens and update tilt/capital
         if (isBack) {

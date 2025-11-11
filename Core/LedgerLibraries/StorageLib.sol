@@ -22,16 +22,41 @@ library StorageLib {
         mapping(uint256 => address) mmIdToAddress;
         uint256 nextMMId;
 
-        // Collateral & accounting
-        mapping(uint256 => uint256) freeCollateral; // per mmId
-        mapping(uint256 => mapping(uint256 => int256)) USDCSpent; // mmId => marketId => int256 (can be negative)
-        mapping(uint256 => mapping(uint256 => int256)) layOffset; // mmId => marketId => int256 (net Lay flow)
-        mapping(uint256 => uint256) MarketUSDCSpent;
-        mapping(uint256 => uint256) Redemptions;
-        mapping(uint256 => uint256) marketValue;
+        // --- Collateral & Accounting ---
+
+        // Free collateral (per MM): unallocated USDC available to a marketmaker for new trades or withdrawl.
+        // Increased on deposit, decreased on allocation. Mirrors totalFreeCollateral.
+        mapping(uint256 => uint256) freeCollateral; // mmId => amount
+
+        // Net USDC movement between each MM and each market.
+        // Positive = capital spent on market; negative = profit from market
+        mapping(uint256 => mapping(uint256 => int256)) USDCSpent; // mmId => marketId => int256
+
+        // Net Lay token flow for each MM in each market.
+        // Positive = more Lay issued than received; negative = more Lay redeemed than issued.
+        mapping(uint256 => mapping(uint256 => int256)) layOffset; // mmId => marketId => int256
+
+        // Total real USDC spent into each market (sum of all MMs).
+        mapping(uint256 => uint256) MarketUSDCSpent; // marketId => total allocated
+
+        // Total sets redeemed (burned) per market. Equal to the amount of USDC taken out of a market through redemptions.
+        mapping(uint256 => uint256) Redemptions; // marketId => total redeemed
+
+        // Market's current value in USDC (capital allocated and still active).  This is effectively MarketUSDCSpent - Redemptions, but currently its updated in parallel rather enforced
+        mapping(uint256 => uint256) marketValue; // marketId => current market value
+
+        // Global total across all markets (Σ marketValue[marketId]).
+        // Increases when MMs allocate, decreases when they deallocate or redeem.
         uint256 TotalMarketsValue;
+
+        // Global free collateral across all MMs (Σ freeCollateral[mmId]).
+        // Increases on deposits and deallocations, decreases on allocations and withdrawals.
         uint256 totalFreeCollateral;
+
+        // Total principal actually held in Aave (baseline TVL, excluding interest).
+        // Used as reference when skimming yield: interest = aUSDC.balanceOf(this) - totalValueLocked.
         uint256 totalValueLocked;
+
 
         // Heap mapping (min-heap)
         mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) heapIndex; // mmId => marketId => blockId => index+1 (0 = not present)

@@ -73,7 +73,7 @@ contract LMSRMarketMaker {
     mapping(uint256 => bool) public isExpanding; // Whether this market can split the reserve into new listed positions
 
     // LEDGER ↔ AMM LISTING MAP
-    mapping(uint256 => mapping(uint256 => uint256)) public slotOf; // marketId => ledgerPositionId => slot+1 (0 means NOT listed)
+    mapping(uint256 => mapping(uint256 => uint256)) public slotOf; // marketId => ledgerPositionId => slot (0 means NOT listed - functions like a combined boolean)
     mapping(uint256 => mapping(uint256 => uint256)) public ledgerIdOfSlot; // marketId => slot => ledgerPositionId
 
     // Initialization flag per market

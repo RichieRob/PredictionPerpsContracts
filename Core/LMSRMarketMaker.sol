@@ -170,17 +170,17 @@ contract LMSRMarketMaker {
                                    QUOTES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Quote cost (pre-fee, 1e6) for buying t tokens of ledgerPositionId.
-    function quoteBuy(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 mNoFee) {
+    /// @notice Quote cost  for buying t tokens of ledgerPositionId.
+    function quoteBuy(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 m) {
         return LMSRQuoteLib.quoteBuyInternal(this, marketId, ledgerPositionId, isBack, t);
     }
 
-    /// @notice Quote proceeds (pre-fee magnitude, 1e6) for selling t tokens.
-    function quoteSell(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 mNoFeeMag) {
+    /// @notice Quote proceeds  for selling t tokens.
+    function quoteSell(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 m) {
         return LMSRQuoteLib.quoteSellInternal(this, marketId, ledgerPositionId, isBack, t);
     }
 
-    /// @notice CLOSED-FORM tokens for exact USDC-in (fee stripped first).
+    /// @notice CLOSED-FORM tokens for exact USDC-in 
     function quoteBuyForUSDC(
         uint256 marketId,
         uint256 ledgerPositionId,
@@ -189,15 +189,18 @@ contract LMSRMarketMaker {
         return LMSRQuoteLib.quoteBuyForUSDCInternal(this, marketId, ledgerPositionId, isBack, mFinal);
     }
 
-    /// @notice With-fee wrappers
-    function quoteBuyWithFee(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 mFinal) {
-        uint256 m = quoteBuy(marketId, ledgerPositionId, isBack, t);
-        mFinal = (m * (10_000 + FEE_BPS)) / 10_000;
+   
+   function quoteSellForUSDC(
+        uint256 marketId,
+        uint256 ledgerPositionId,
+        bool isBack,
+        uint256 mFinal
+    ) public view returns (uint256 tIn) {
+        return LMSRQuoteLib.quoteSellForUSDCInternal(this, marketId, ledgerPositionId, isBack, mFinal);
+
     }
-    function quoteSellWithFee(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 mFinalOut) {
-        uint256 m = quoteSell(marketId, ledgerPositionId, isBack, t);
-        mFinalOut = (m * (10_000 - FEE_BPS)) / 10_000;
-    }
+
+   
 
     /*//////////////////////////////////////////////////////////////
                                  EXPANSION

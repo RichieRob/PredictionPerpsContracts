@@ -38,7 +38,7 @@ library LMSRExecutionLib {
 
         // Pull funds + mint via ledger (passing the *ledger* positionId)
         self.ledger.processBuy(
-            msg.sender, marketId, self.mmId[marketId],
+            msg.sender, marketId, self.mmId,
             ledgerPositionId, isBack, mFinal, t, 0,
             usePermit2, permitBlob
         );
@@ -78,7 +78,7 @@ library LMSRExecutionLib {
         require(tOut >= minTokensOut && tOut > 0, "slippage");
 
         self.ledger.processBuy(
-            msg.sender, marketId, self.mmId[marketId],
+            msg.sender, marketId, self.mmId,
             ledgerPositionId, isBack, usdcIn, tOut, 0,
             usePermit2, permitBlob
         );
@@ -116,7 +116,7 @@ library LMSRExecutionLib {
         require(usdcOut >= minUSDCOut, "slippage");
 
         self.ledger.processSell(
-            msg.sender, marketId, self.mmId[marketId],
+            msg.sender, marketId, self.mmId,
             ledgerPositionId, isBack, t, usdcOut
         );
 

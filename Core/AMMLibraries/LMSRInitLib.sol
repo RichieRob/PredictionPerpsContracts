@@ -66,7 +66,7 @@ library LMSRInitLib {
             emit LMSRMarketMaker.PositionListed(ledger_position_id , i, ri);
         }
 
-        self.S_tradables[_marketId] = sumTradables;
+        self.S[_marketId] = sumTradables + reserve_final;
         self.R_reserve[_marketId]   = reserve_final;
 
         self.numOutcomes[_marketId] = n;

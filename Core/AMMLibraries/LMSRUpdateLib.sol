@@ -73,13 +73,14 @@ library LMSRUpdateLib {
 
         // S' = S - R_k + R_k'
 
-        //slight refactor needed for better readablity - remove denom and track S instead of S_tradables
-        // it wont change functionality or logic
-        self.S_tradables[marketId] = self.S_tradables[marketId] - Ri_old + Ri_new;
+        self.S[marketId] = self.S[marketId] - Ri_old + Ri_new;
+        require(self.S[marketId] > 0, "S <= 0");
+        require(self.R_reserve[marketId] >= 0, "reserve < 0");
+
 
         if (!self.isExpanding[marketId]) {
             // Safety: S must remain > 0 for valid pricing
-            require(self.S_tradables[marketId] > 0, "S underflow");
+            require(self.S[marketId] > 0, "S underflow");
         }
 
         // NOTE: R_reserve is untouched; its price moves through the denominator.

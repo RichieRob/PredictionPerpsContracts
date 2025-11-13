@@ -62,12 +62,11 @@ contract LMSRMarketMaker {
 
     // LMSR PARAMS
     mapping(uint256 => int256) public b; // > 0, per market
-    mapping(uint256 => uint256) public mmId; // per market
 
     // DECOMPOSED STATE
     mapping(uint256 => int256) public G; // Global factor G = exp(U_all / b)  (1e18)
     mapping(uint256 => int256[]) public R; // Tradable base masses (1e18) indexed by AMM slot [0..numOutcomes-1]
-    mapping(uint256 => int256) public S_tradables;   // sum(R)
+    mapping(uint256 => int256) public S;   // sum(R) this includes R_reserve
     mapping(uint256 => int256) public R_reserve; // Non-tradable reserve mass (1e18)
     mapping(uint256 => uint256) public numOutcomes; // Number of listed tradables (R.length)
     mapping(uint256 => bool) public isExpanding; // Whether this market can split the reserve into new listed positions
@@ -157,7 +156,7 @@ contract LMSRMarketMaker {
         return LMSRViewLib.getReservePriceWadInternal(this, marketId);
     }
 
-    /// @notice Z = sum E_i = G * (S_tradables + R_reserve) (1e18)
+    /// @notice Z = sum E_i = G * S (1e18)
     function getZ(uint256 marketId) public view returns (uint256) {
         return LMSRViewLib.getZInternal(this, marketId);
     }
@@ -214,7 +213,7 @@ contract LMSRMarketMaker {
 
     /// @notice Split α fraction of the reserve into a NEW listing tied to `ledgerPositionId`.
     ///         Requires market to be in expanding mode.
-    ///         Keeps (S_tradables + R_reserve) constant → price continuity.
+    ///         Keeps S constant → price continuity.
     function splitFromReserve(uint256 marketId, uint256 ledgerPositionId, uint256 alphaWad) external onlyGovernor returns (uint256 slot) {
         return LMSRExpansionLib.splitFromReserveInternal(this, marketId, ledgerPositionId, alphaWad);
     }

@@ -20,7 +20,7 @@ library LMSRExpansionLib {
 
         uint256 slot = self.numOutcomes[marketId]; // append
         self.R[marketId].push(priorR);
-        self.S_tradables[marketId] += priorR;
+        self.S[marketId] += priorR;
 
         self.slotOf[marketId][ledgerPositionId] = slot + 1;
         self.ledgerIdOfSlot[marketId][slot]     = ledgerPositionId;
@@ -50,10 +50,13 @@ library LMSRExpansionLib {
         require(Rnew > 0, "tiny split");
 
         self.R_reserve[marketId] = before - Rnew; // denom unchanged
+        require(self.R_reserve[marketId] >= 0, "reserve underflow");
+
         slot = self.numOutcomes[marketId];
 
         self.R[marketId].push(Rnew);
-        self.S_tradables[marketId] += Rnew;
+        //S unchanged
+        // self.S[marketId] = self.S[marketId];
 
         self.slotOf[marketId][ledgerPositionId] = slot + 1;
         self.ledgerIdOfSlot[marketId][slot]     = ledgerPositionId;

@@ -89,8 +89,8 @@ library LMSRTwapO1Lib {
 
         uint256 J = self.twapJ[marketId];
         if (nowTs > last) {
-            int256 denom = LMSRHelpersLib.denom(self, marketId); // 1e18
-            uint256 dJ = uint256((int256(uint256(nowTs - last)) * int256(1e18)) / denom);
+           
+            uint256 dJ = uint256((int256(uint256(nowTs - last)) * int256(1e18)) / self.S[marketId]);
             J += dJ;
             self.twapJ[marketId] = J;
             self.twapLastTs[marketId] = nowTs;
@@ -139,8 +139,8 @@ library LMSRTwapO1Lib {
         uint32 nowTs = uint32(block.timestamp);
         uint256 Jnow = self.twapJ[marketId];
         if (nowTs > last) {
-            int256 denom = LMSRHelpersLib.denom(self, marketId);
-            uint256 dJ = uint256((int256(uint256(nowTs - last)) * int256(1e18)) / denom);
+          
+            uint256 dJ = uint256((int256(uint256(nowTs - last)) * int256(1e18)) / self.S[marketId]);
             Jnow += dJ;
         }
 

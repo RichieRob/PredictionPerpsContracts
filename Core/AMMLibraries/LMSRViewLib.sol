@@ -14,7 +14,7 @@ library LMSRViewLib {
         uint256 ledgerPositionId
     ) internal view returns (uint256) {
         uint256 slot = LMSRHelpersLib.requireListed(self, marketId, ledgerPositionId);
-        return uint256((self.R[marketId][slot] * int256(LMSRMarketMaker.WAD)) / LMSRHelpersLib.denom(self, marketId));
+        return uint256((self.R[marketId][slot] * int256(LMSRMarketMaker.WAD)) / self.S[marketId]);
     }
 
     /// @notice Internal implementation to get true LAY(not-i) price for a ledger positionId (1e18).
@@ -31,15 +31,15 @@ library LMSRViewLib {
         LMSRMarketMaker self,
         uint256 marketId
     ) internal view returns (uint256) {
-        return uint256((self.R_reserve[marketId] * int256(LMSRMarketMaker.WAD)) / LMSRHelpersLib.denom(self, marketId));
+        return uint256((self.R_reserve[marketId] * int256(LMSRMarketMaker.WAD)) /self.S[marketId]);
     }
 
-    /// @notice Internal implementation for Z = sum E_i = G * (S_tradables + R_reserve) (1e18).
+    /// @notice Internal implementation for Z = sum E_i = G * S(1e18).
     function getZInternal(
         LMSRMarketMaker self,
         uint256 marketId
     ) internal view returns (uint256) {
-        return uint256((self.G[marketId] * LMSRHelpersLib.denom(self, marketId)) / int256(LMSRMarketMaker.WAD));
+        return uint256((self.G[marketId] * self.S[marketId]) / int256(LMSRMarketMaker.WAD));
     }
 
     /// @notice Internal implementation to return the listed AMM slots and their ledger ids (for UIs).

@@ -32,7 +32,8 @@ library LMSRInitLib {
         require(n >= 1 && n <= 4096, "bad n");
 
         // Depth parameter b
-        int256 _b = calculateB(liabilityUSDC, n);
+        uint256 effectiveN = _isExpanding ? n + 1 : n;
+        int256 _b = calculateB(liabilityUSDC, effectiveN);
         require(_b > 0, "invalid b");
         self.b[_marketId] = _b;
 

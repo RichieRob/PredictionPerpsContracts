@@ -185,9 +185,7 @@ contract LMSRMarketMaker {
         uint256 marketId,
         uint256 ledgerPositionId,
         bool isBack,
-        uint256 mFinal,
-        uint256 /* tMax (ignored) */
-    ) public view returns (uint256 tOut) {
+        uint256 mFinal    ) public view returns (uint256 tOut) {
         return LMSRQuoteLib.quoteBuyForUSDCInternal(this, marketId, ledgerPositionId, isBack, mFinal);
     }
 
@@ -241,7 +239,6 @@ contract LMSRMarketMaker {
         uint256 ledgerPositionId,
         bool isBack,
         uint256 usdcIn,
-        uint256 tMax,             // unused (ABI compatibility)
         uint256 minTokensOut,
         bool usePermit2,
         bytes calldata permitBlob
@@ -259,6 +256,16 @@ contract LMSRMarketMaker {
     ) external returns (uint256 usdcOut) {
         return LMSRExecutionLib.sellInternal(this, marketId, ledgerPositionId, isBack, t, minUSDCOut);
     }
+
+    function sellForUSDC(
+        uint256 marketId,
+        uint256 ledgerPositionId,
+    b   ool isBack,
+        uint256 usdcOut,
+        uint256 tMax
+    ) external returns (uint256 tUsed) {
+        return return LMSRExecutionLib.sellForUSDCInternal(this, marketId,ledgerPositionId, isBack, usdcOut, tMax);
+
 
 
 }

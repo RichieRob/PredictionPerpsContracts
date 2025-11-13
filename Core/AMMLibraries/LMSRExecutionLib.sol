@@ -63,7 +63,6 @@ library LMSRExecutionLib {
         uint256 ledgerPositionId,
         bool isBack,
         uint256 usdcIn,
-        uint256 /* tMax (unused) */,
         uint256 minTokensOut,
         bool usePermit2,
         bytes calldata permitBlob

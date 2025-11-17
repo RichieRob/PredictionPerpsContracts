@@ -32,8 +32,7 @@ library LMSRExecutionLib {
         // TWAP: accrue using pre-trade prices
         LMSRTwapO1Lib.updateBeforePriceChange(self, marketId, slot);
 
-        uint256 mNoFee = LMSRQuoteLib.quoteBuyInternal(self, marketId, ledgerPositionId, isBack, t);
-        mFinal = (mNoFee * (10_000 + LMSRMarketMaker.FEE_BPS)) / 10_000;
+        uint256 mFinal = LMSRQuoteLib.quoteBuyInternal(self, marketId, ledgerPositionId, isBack, t);
         require(mFinal <= maxUSDCIn, "slippage");
 
         // Pull funds + mint via ledger (passing the *ledger* positionId)
@@ -110,8 +109,7 @@ library LMSRExecutionLib {
         // TWAP: accrue using pre-trade prices
         LMSRTwapO1Lib.updateBeforePriceChange(self, marketId, slot);
 
-        uint256 mNoFee = LMSRQuoteLib.quoteSellInternal(self, marketId, ledgerPositionId, isBack, t);
-        usdcOut = (mNoFee * (10_000 - LMSRMarketMaker.FEE_BPS)) / 10_000;
+        uint256 usdcOut = LMSRQuoteLib.quoteSellInternal(self, marketId, ledgerPositionId, isBack, t);
         require(usdcOut >= minUSDCOut, "slippage");
 
         self.ledger.processSell(

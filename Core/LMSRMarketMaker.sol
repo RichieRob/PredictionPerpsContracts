@@ -61,7 +61,8 @@ contract LMSRMarketMaker {
     //////////////////////////////////////////////////////////////*/
 
     // LMSR PARAMS
-    mapping(uint256 => int256) public b; // > 0, per market
+    mapping(uint256 => int256) public b; // > 0, per market 1e18
+    mapping(uint256 => int256) public maxLiabilityUpscaled; // > 0, per market (x10^6 - decimals) UPSCALED BY 1e18
 
     // DECOMPOSED STATE
     mapping(uint256 => int256) public G; // Global factor G = exp(U_all / b)  (1e18)

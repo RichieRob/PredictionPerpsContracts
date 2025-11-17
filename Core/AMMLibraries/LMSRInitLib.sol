@@ -31,9 +31,12 @@ library LMSRInitLib {
         uint256 n = initialPositions.length;
         require(n >= 1 && n <= 4096, "bad n");
 
+        //store maxliability
+        self.maxLiabilityUpscaled[_marketId] = liabilityUSDC * WAD
+
         // Depth parameter b
         uint256 effectiveN = _isExpanding ? n + 1 : n;
-        int256 _b = calculateB(liabilityUSDC, effectiveN);
+        int256 _b = calculateB(self.maxLiabilityUpscaled[_marketId], effectiveN);
         require(_b > 0, "invalid b");
         self.b[_marketId] = _b;
 
@@ -76,10 +79,10 @@ library LMSRInitLib {
     }
 
     /// @dev Computes b from liabilityUSDC: b = liability / ln(n), handling 1e6→1e18 scaling.
-    function calculateB(uint256 liabilityUSDC, uint256 _numInitial) internal pure returns (int256 _b) {
-        int256 numWad = int256(_numInitial) * int256(LMSRMarketMaker.WAD);  // n in 1e18
+    function calculateB(uint256 maxLiabilityUpscaled, uint256 effectivePositions) internal pure returns (int256 _b) {
+        int256 numWad = int256(effectivePositions) * int256(LMSRMarketMaker.WAD);  // n in 1e18
         int256 lnNWad = PRBMathSD59x18.ln(numWad);                          // ln(n) in 1e18
-        _b = (int256(liabilityUSDC) * int256(LMSRMarketMaker.WAD)) / lnNWad; // (1e6 * 1e18 / 1e18) in sd59x18
+        _b = maxLiabilityUpscaled / lnNWad; // (1e6 * 1e18 / 1e18) in sd59x18
     }
 
     /// @dev Normalizes to total 1e18 with short-circuit and dust tolerance.

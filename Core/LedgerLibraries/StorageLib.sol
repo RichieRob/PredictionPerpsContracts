@@ -32,6 +32,8 @@ library StorageLib {
         // Positive = capital spent on market; negative = profit from market
         mapping(uint256 => mapping(uint256 => int256)) USDCSpent; // mmId => marketId => int256
 
+       
+
         // Net Lay token flow for each MM in each market.
         // Positive = more Lay issued than received; negative = more Lay redeemed than issued.
         mapping(uint256 => mapping(uint256 => int256)) layOffset; // mmId => marketId => int256

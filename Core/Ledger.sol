@@ -19,6 +19,10 @@ import "./LedgerLibraries/TradingLib.sol";
 import "./LedgerLibraries/RedemptionLib.sol";
 import "../Interfaces/IPositionToken1155.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
+import "./LedgerLibraries/LedgerInvariantViews.sol";
+
+using LedgerInvariantViews for *;
+
 
 
 contract MarketMakerLedger {

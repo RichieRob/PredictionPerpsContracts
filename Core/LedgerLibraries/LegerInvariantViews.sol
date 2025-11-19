@@ -1,6 +1,7 @@
 library LedgerInvariantViews {
     using MarketManagementLib for uint256;
 
+    // marketValue and MarketUSDSpent - Redemptions should be the same, do we even need marketValue shouldnt we just have it as a getter?
     function marketAccounting(StorageLib.Storage storage s, uint256 marketId)
         internal
         view
@@ -22,7 +23,7 @@ library LedgerInvariantViews {
         /// @notice Conceptual "ISC needed" for this market: how far below zero the DMM's
     ///         real min-shares would be without any synthetic collateral.
     /// @dev Defined as:
-    ///        realMinShares = USDCSpent + layOffset + minTilt
+    ///        realMinShares = USDCSpent - USDCRedeemed + layOffset + minTilt
     ///        iscSpent      = max(0, -realMinShares)
     ///
     ///     This is intentionally *not* clamped by syntheticCollateral[marketId]:
@@ -34,7 +35,7 @@ library LedgerInvariantViews {
         // The designated DMM for this market is the one whose solvency we care about
         uint256 dmmId = s.marketToDMM[marketId];
 
-        // realMin = USDCSpent + layOffset + minTilt (for this DMM in this market)
+        // realMin = USDCSpent - USDCRedeepmed + layOffset + minTilt (for this DMM in this market)
         int256 realMin = SolvencyLib.computeRealMinShares(s, dmmId, marketId);
 
         if (realMin >= 0) {

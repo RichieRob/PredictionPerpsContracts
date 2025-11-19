@@ -9,10 +9,28 @@ import "./AllocateCapitalLib.sol";
 import "./MarketManagementLib.sol";
 
 library SolvencyLib {
-    function computeRealMinShares(StorageLib.Storage storage s, uint256 mmId, uint256 marketId) internal view returns (int256) {
-        (int128 minTilt, ) = HeapLib.getMinTilt(mmId, marketId);
-        return s.USDCSpent[mmId][marketId] + s.layOffset[mmId][marketId] + int256(minTilt);
-    }
+
+    function _netUSDCAllocationSigned(
+    StorageLib.Storage storage s,
+    uint256 mmId,
+    uint256 marketId
+) internal view returns (int256) {
+    uint256 spent    = s.USDCSpent[mmId][marketId];
+    uint256 redeemed = s.redeemedUSDC[mmId][marketId];
+
+    return int256(spent) - int256(redeemed);
+}
+
+  function computeRealMinShares(
+    StorageLib.Storage storage s,
+    uint256 mmId,
+    uint256 marketId
+) internal view returns (int256) {
+    (int128 minTilt, ) = HeapLib.getMinTilt(mmId, marketId);
+    int256 netAlloc    = _netUSDCAllocationSigned(s, mmId, marketId);
+    return netAlloc + s.layOffset[mmId][marketId] + int256(minTilt);
+}
+
 
     function computeEffectiveMinShares(StorageLib.Storage storage s, uint256 mmId, uint256 marketId, int256 realMinShares) internal view returns (int256) {
         uint256 isc = MarketManagementLib.isDMM(mmId, marketId) ? s.syntheticCollateral[marketId] : 0;
@@ -24,20 +42,27 @@ library SolvencyLib {
         return -s.layOffset[mmId][marketId] - int256(maxTilt);
     }
 
-    function ensureSolvency(uint256 mmId, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        int256 realMin = computeRealMinShares(s, mmId, marketId);
-        int256 effMin = computeEffectiveMinShares(s, mmId, marketId, realMin);
-        if (effMin < 0) {
-            uint256 shortfall = uint256(-effMin);
-            AllocateCapitalLib.allocate(mmId, marketId, shortfall);
-        }
-        int256 redeemable = computeRedeemable(s, mmId, marketId);
-        if (redeemable > 0 && s.USDCSpent[mmId][marketId] < redeemable) {
-            uint256 diff = uint256(redeemable - s.USDCSpent[mmId][marketId]);
+function ensureSolvency(uint256 mmId, uint256 marketId) internal {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+
+    int256 realMin = computeRealMinShares(s, mmId, marketId);
+    int256 effMin  = computeEffectiveMinShares(s, mmId, marketId, realMin);
+
+    if (effMin < 0) {
+        uint256 shortfall = uint256(-effMin);
+        AllocateCapitalLib.allocate(mmId, marketId, shortfall);
+    }
+
+    int256 redeemable = computeRedeemable(s, mmId, marketId);
+    if (redeemable > 0) {
+        int256 netAlloc = _netUSDCAllocationSigned(s, mmId, marketId);
+        if (netAlloc < redeemable) {
+            uint256 diff = uint256(redeemable - netAlloc);
             AllocateCapitalLib.allocate(mmId, marketId, diff);
         }
     }
+}
+
 
     function deallocateExcess(uint256 mmId, uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
@@ -47,10 +72,10 @@ library SolvencyLib {
             uint256 amount = uint256(effMin);
             int256 redeemable = computeRedeemable(s, mmId, marketId);
             if (redeemable > 0) {
-                amount = _min(amount, uint256(s.USDCSpent[mmId][marketId] - redeemable));
+                amount = _min(amount, uint256((s.USDCSpent[mmId][marketId] - s.redeemedUSDC[mmId][marketId]) - redeemable));
             }
             if (MarketManagementLib.isDMM(mmId, marketId) && realMin < 0) {
-                amount = _min(amount, uint256(s.USDCSpent[mmId][marketId]));
+                amount = _min(amount, uint256(s.USDCSpent[mmId][marketId] - s.redeemedUSDC[mmId][marketId]));
             }
             if (amount > 0) {
                 AllocateCapitalLib.deallocate(mmId, marketId, amount);

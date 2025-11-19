@@ -24,49 +24,108 @@ library StorageLib {
 
         // --- Collateral & Accounting ---
 
+
+        // Invariants (per mmId, per marketId):
+        //
+        // netUSDCAllocation(mmId, marketId) = USDCSpent[mmId][marketId]
+        //                                   - redeemedUSDC[mmId][marketId]
+        //
+        // For any operation, we maintain:
+        //   - USDCSpent and redeemedUSDC are MONOTONE increasing (never decrease).
+        //   - freeCollateral[mmId] >= 0 at all times.
+        //   - where H_k are the available shares the market maker has for position k
+        //   - H_k = freeCollateral[mmId]
+        //          + netUSDCAllocation(mmId, marketId)
+        //          + layOffset[mmId][marketId]
+        //          + tilt[mmId][marketId][k]
+        //     and we enforce min_k H_k >= 0 via the heap (min-tilt) logic.
+
+        //   - For the designated DMM in a market with ISC, effective H_k also includes syntheticCollateral[marketId]
+        //     in solvency checks (see SolvencyLib / Synthetic Liquidity docs).
+
+
+
+        
+        
+        // Profit and loss that a market maker makes on a specific market or otherwise is not recorded directly in the ledger.
+        // Why is the profit and loss not recorded? 
+        // Well In a sense it is not a meaningful quantity of the ledger, exactly how the market maker is managing it's own funds
+        // is not the concern of the ledger, 
+        // - the market maker may not be sending all the USDC paid by the user to to ledger
+        // - the market maker may be accepting other tokens not tracked by the leger as payment
+
+
+        //  - the principal concern of the ledger is solvency
+        
+        
         // Free collateral (per MM): unallocated USDC available to a marketmaker for new trades or withdrawl.
-        // Increased on deposit, decreased on allocation. Mirrors totalFreeCollateral.
+        // Increased on deposit, decreased on allocation. Mirrors totalFreeCollateral but specific to market maker.
         mapping(uint256 => uint256) freeCollateral; // mmId => amount
 
-        // Net USDC movement between each MM and each market.
-        // Positive = capital spent on market; negative = profit from market
-        mapping(uint256 => mapping(uint256 => int256)) USDCSpent; // mmId => marketId => int256
+        // Cumulative USDC this MM has ever allocated into this market.
+        // Monotone increasing; never decreased.
+        mapping(uint256 => mapping(uint256 => uint256)) USDCSpent; // mmId => marketId => total allocated
 
-       
+        // Cumulative USDC this MM has ever deallocated / redeemed *from* this market.
+        // Monotone increasing; never decreased.
+        mapping(uint256 => mapping(uint256 => uint256)) redeemedUSDC; // mmId => marketId => total deallocated
 
+        // Yes this one makes sesne we are just increasing this up and down instead of touching all the individual tilts
         // Net Lay token flow for each MM in each market.
-        // Positive = more Lay issued than received; negative = more Lay redeemed than issued.
+        // Positive = more Lay received than issued; negative = more Lay issued than received.
         mapping(uint256 => mapping(uint256 => int256)) layOffset; // mmId => marketId => int256
 
-        // Total real USDC spent into each market (sum of all MMs).
-        mapping(uint256 => uint256) MarketUSDCSpent; // marketId => total allocated
+        
+        // Total real USDC ever allocated into each market (sum of all MMs).
+        // Monotone increasing.
+        mapping(uint256 => uint256) MarketUSDCSpent; // marketId => cumulative allocated
 
-        // Total sets redeemed (burned) per market. Equal to the amount of USDC taken out of a market through redemptions.
-        mapping(uint256 => uint256) Redemptions; // marketId => total redeemed
+        // Total USDC ever removed from this market’s “active pot”.
+        // Includes:
+        //   - MM deallocations (moving capital back to freeCollateral), and
+        //   - user full-set redemptions (burning complete baskets for USDC).
+        // Monotone increasing.
+        mapping(uint256 => uint256) Redemptions; // marketId => total “taken out of the market”
 
-        // Market's current value in USDC (capital allocated and still active).  This is effectively MarketUSDCSpent - Redemptions, but currently its updated in parallel rather enforced
+        // Current active real capital in the market:
+        // marketValue[marketId] = MarketUSDCSpent[marketId] - Redemptions[marketId] (INTENTION)
+        // Always kept >= 0.
         mapping(uint256 => uint256) marketValue; // marketId => current market value
 
-        // Global total across all markets (Σ marketValue[marketId]).
-        // Increases when MMs allocate, decreases when they deallocate or redeem.
+
+         // Global sum of all marketValue[marketId].
+        // Invariant: TotalMarketsValue = Σ_m marketValue[m].
         uint256 TotalMarketsValue;
 
         // Global free collateral across all MMs (Σ freeCollateral[mmId]).
         // Increases on deposits and deallocations, decreases on allocations and withdrawals.
+        
         uint256 totalFreeCollateral;
 
         // Total principal actually held in Aave (baseline TVL, excluding interest).
         // Used as reference when skimming yield: interest = aUSDC.balanceOf(this) - totalValueLocked.
         uint256 totalValueLocked;
 
-
-        // Heap mapping (min-heap)
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) heapIndex; // mmId => marketId => blockId => index+1 (0 = not present)
-
-        // Risk / tilt
+        //tilt
         mapping(uint256 => mapping(uint256 => mapping(uint256 => int128))) tilt; // mmId => marketId => positionId
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockData; // mmId => marketId => blockId => {minId, minVal}
-        mapping(uint256 => mapping(uint256 => uint256[])) topHeap; // mmId => marketId => heap array
+
+        // Min-heap over block minima (for solvency).
+        // For each (mmId, marketId):
+        //   - positions are grouped into blocks of 16, each BlockData stores:
+        //       minId  = positionId with smallest tilt in block
+        //       minVal = that smallest tilt
+        //   - mintTopHeap[mmId][marketId][0] indexes the block with GLOBAL min tilt.
+        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) minHeapIndex; // mmId => marketId => blockId => index+1 (0 = not present)        
+        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) minBlockData; // mmId => marketId => blockId => {minId, minVal}
+        mapping(uint256 => mapping(uint256 => uint256[])) minTopHeap; // mmId => marketId => heap array
+
+        // Max-heap over block maxima (for redemption constraint when ISC is active).
+        // Mirrors the min-heap structure, but tracking max tilt per block.
+        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockDataMax; // mmId => marketId => blockId => {maxId, maxVal}
+        mapping(uint256 => mapping(uint256 => uint256[])) topHeapMax; // mmId => marketId => heap array
+        mapping(uint256 => mapping(uint256 => uint256)) heapIndexMax; // mmId => marketId => blockId => index+1 (0 = not present)
+
+
 
         // Markets
         address positionToken1155;
@@ -78,20 +137,26 @@ library StorageLib {
         // Permits
         address permit2; // optional, set if using Permit2
 
-        // NEW: Synthetic Liquidity (ISC)
+        // Synthetic Liquidity (ISC) configuration.
+        //
+        // Invariants:
+        //   - If syntheticCollateral[marketId] > 0:
+        //       * marketToDMM[marketId] is the ONLY mmId allowed to draw ISC.
+        //       * allowedDMMs[marketToDMM[marketId]] == true.
+        //   - syntheticCollateral[marketId] is set once at market creation and never mutated.
+        //   - ISC is never transferred or withdrawn; it only appears virtually in solvency checks.
         mapping(uint256 => uint256) marketToDMM; // marketId => mmId (immutable)
         mapping(uint256 => uint256) syntheticCollateral; // marketId => ISC amount (immutable)
         mapping(uint256 => bool) isExpanding; // allows additional positions for expanding markets, ensures MMs solvent in "Other" position
 
-        // NEW: Max-heap structures (symmetric to min-heap)
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockDataMax; // mmId => marketId => blockId => {maxId, maxVal}
-        mapping(uint256 => mapping(uint256 => uint256[])) topHeapMax; // mmId => marketId => heap array
-        mapping(uint256 => mapping(uint256 => uint256)) heapIndexMax; // mmId => marketId => blockId => index+1 (0 = not present)
-
+        
         //allowed DMM mapping
         mapping(uint256 => bool) allowedDMMs; // mmId => is allowed as DMM
 
-        //Fee skimming
+        // Protocol fee configuration.
+        // Invariants:
+        //   - feeBps is in basis points, expected to satisfy feeBps <= 10_000 (100%).
+        //   - If feeEnabled == false, core flows must not skim any fee.
         address feeRecipient;          // where fees go
         uint16  feeBps;                // e.g. 3 = 0.03%
         bool    feeEnabled;            // on/off

@@ -7,7 +7,7 @@ import "./Types.sol";
 import "./MarketManagementLib.sol";
 
 /// @notice Min-heap and max-heap over blocks (4-ary heap). Each heap node holds a blockId,
-/// and its key is s.blockData[mmId][marketId][blockId].minVal or .maxVal.
+/// and its key is s.minBlockData[mmId][marketId][blockId].minVal or .maxVal.
 /// We maintain the heaps when a block's minVal or maxVal changes.
 library HeapLib {
     enum HeapType { MIN, MAX }
@@ -39,7 +39,7 @@ library HeapLib {
         HeapType heapType
     ) private {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.blockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
+        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.minBlockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
 
         // Lazy init
         if (b.minId == 0 && b.minVal == 0) { // Using minId/minVal for both; for max, minVal is maxVal
@@ -97,7 +97,7 @@ library HeapLib {
             }
         }
 
-        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.blockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
+        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.minBlockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
         b.minVal = extremumVal; // Reusing minVal for maxVal in max-heap
         b.minId = extremumId;   // Reusing minId for maxId
 
@@ -114,8 +114,8 @@ library HeapLib {
         uint256 mmId, uint256 marketId, uint256 blockId,
         HeapType heapType
     ) private view returns (bool found, uint256 idx) {
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) storage heapIndex = (heapType == HeapType.MIN) ? s.heapIndex : s.heapIndexMax;
-        uint256 v = heapIndex[mmId][marketId][blockId];
+        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) storage minHeapIndex = (heapType == HeapType.MIN) ? s.minHeapIndex : s.heapIndexMax;
+        uint256 v = minHeapIndex[mmId][marketId][blockId];
         if (v == 0) return (false, 0);
         return (true, v - 1);
     }
@@ -125,8 +125,8 @@ library HeapLib {
         uint256 mmId, uint256 marketId, uint256 blockId, uint256 idx,
         HeapType heapType
     ) private {
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) storage heapIndex = (heapType == HeapType.MIN) ? s.heapIndex : s.heapIndexMax;
-        heapIndex[mmId][marketId][blockId] = idx + 1;
+        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) storage minHeapIndex = (heapType == HeapType.MIN) ? s.minHeapIndex : s.heapIndexMax;
+        minHeapIndex[mmId][marketId][blockId] = idx + 1;
     }
 
     function _place(
@@ -205,14 +205,14 @@ library HeapLib {
         uint256 mmId, uint256 marketId, uint256 blockId,
         HeapType heapType
     ) private view returns (int128) {
-        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.blockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
+        Types.BlockData storage b = (heapType == HeapType.MIN) ? s.minBlockData[mmId][marketId][blockId] : s.blockDataMax[mmId][marketId][blockId];
         return b.minVal; // Reusing minVal for maxVal in max-heap
     }
 
     /// @dev Insert or update a block's key in the top heap.
     function _updateTopHeap(uint256 mmId, uint256 marketId, uint256 blockId, HeapType heapType) private {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256[] storage heap = (heapType == HeapType.MIN) ? s.topHeap[mmId][marketId] : s.topHeapMax[mmId][marketId];
+        uint256[] storage heap = (heapType == HeapType.MIN) ? s.minTopHeap[mmId][marketId] : s.topHeapMax[mmId][marketId];
         int128 newVal = _getBlockVal(s, mmId, marketId, blockId, heapType);
 
         (bool found, uint256 idx) = _getIndex(s, mmId, marketId, blockId, heapType);
@@ -237,12 +237,12 @@ library HeapLib {
 
     function getMinTilt(uint256 mmId, uint256 marketId) internal view returns (int128, uint256) {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256[] storage heap = s.topHeap[mmId][marketId];
+    uint256[] storage heap = s.minTopHeap[mmId][marketId];
     if (heap.length == 0) {
         return (0, 0);
     }
     uint256 blockId = heap[0];
-    Types.BlockData storage b = s.blockData[mmId][marketId][blockId];
+    Types.BlockData storage b = s.minBlockData[mmId][marketId][blockId];
     int128 minVal = b.minVal;
     uint256 minId = b.minId;
     if (s.isExpanding[marketId] && minVal > 0) {

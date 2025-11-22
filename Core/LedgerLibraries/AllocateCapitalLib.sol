@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
-import "./freeCollateralLib.sol";
+import "./FreeCollateralLib.sol";
 
 library AllocateCapitalLib {
     function allocate(address account, uint256 marketId, uint256 amount) internal {
@@ -25,7 +25,6 @@ library AllocateCapitalLib {
 
     function deallocate(address account, uint256 marketId, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[account] + amount <= type(uint256).max, "Free collateral overflow");
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
         // increase the amount of free capital the account has

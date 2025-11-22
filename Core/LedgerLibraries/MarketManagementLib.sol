@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
 import "./Types.sol";
-import "../../Interfaces/IPositionToken1155.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
+import "./ERC20BridgeLib.sol"; // 👈 add this
+
 
 
 library MarketManagementLib {
@@ -12,7 +13,7 @@ library MarketManagementLib {
     using Clones for address;
 
     event MarketCreated(uint256 indexed marketId, string name, string ticker);
-    event PositionCreated(uint256 indexed marketId, uint256 indexed positionId, string name, string ticker);
+    event PositionCreated(uint256 indexed marketId, uint256 indexed positionId, address token, string name, string ticker);
     event SyntheticLiquidityCreated(uint256 indexed marketId, uint256 amount, address dmm);
     event MarketLocked(uint256 indexed marketId);
 
@@ -20,26 +21,30 @@ library MarketManagementLib {
     //  CREATE MARKET / POSITION
     // -------------------------------------------------------------
     function createMarket(
-        string memory name,
-        string memory ticker,
-        address dmm,
-        uint256 iscAmount
-    ) internal returns (uint256 marketId) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.allowedDMMs[dmm], "DMM not allowed");
-        marketId = s.nextMarketId++;
-        s.allMarkets.push(marketId);
+    string memory name,
+    string memory ticker,
+    address dmm,
+    uint256 iscAmount
+) internal returns (uint256 marketId) {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    require(s.allowedDMMs[dmm], "DMM not allowed");
 
-        IPositionToken1155(s.positionToken1155).setMarketMetadata(marketId, name, ticker);
-        s.marketToDMM[marketId] = dmm;
-        s.syntheticCollateral[marketId] = iscAmount;
+    marketId = s.nextMarketId++;
+    s.allMarkets.push(marketId);
 
-        emit MarketCreated(marketId, name, ticker);
-        emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
+    // ✅ use our own metadata
+    s.marketNames[marketId]   = name;
+    s.marketTickers[marketId] = ticker;
 
-        // By default, allow position expansion at creation
-        s.isExpanding[marketId] = true;
-    }
+    s.marketToDMM[marketId] = dmm;
+    s.syntheticCollateral[marketId] = iscAmount;
+
+    emit MarketCreated(marketId, name, ticker);
+    emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
+
+    s.isExpanding[marketId] = true;
+}
+
 
    function createPosition(
         uint256 marketId,

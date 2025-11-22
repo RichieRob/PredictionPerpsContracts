@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../Interfaces/ILedger.sol";
 import "./LedgerLibraries/StorageLib.sol";
@@ -15,9 +14,10 @@ import "./LedgerLibraries/MarketManagementLib.sol";
 import "./LedgerLibraries/LedgerLib.sol";
 import "./LedgerLibraries/PositionTransferLib.sol";
 import "./LedgerLibraries/TradeExecutionLib.sol";
-import "../Interfaces/IPositionToken1155.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
 import "./LedgerLibraries/LedgerInvariantViews.sol";
+import "./PositionERC20.sol";
+
 
 using LedgerInvariantViews for *;
 
@@ -45,18 +45,17 @@ contract MarketMakerLedger {
         _;
     }
 
-    constructor(address _usdc, address _aUSDC, address _aavePool, address _positionToken1155, address _permit2, address _ppUSDC ) {
-        StorageLib.Storage storage store = StorageLib.getStorage();
-        store.owner = msg.sender;
-        store.usdc = IERC20(_usdc);
-        store.aUSDC = IERC20(_aUSDC);
-        store.aavePool = IAavePool(_aavePool);
-        store.positionToken1155 = _positionToken1155;
-        store.permit2 = _permit2; // may be address(0) if unused
-        store.ppUSDC = IERC20(_ppUSDC);
+    constructor(address _usdc, address _aUSDC, address _aavePool, address _permit2, address _ppUSDC ) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        s.owner = msg.sender;
+        s.usdc = IERC20(_usdc);
+        s.aUSDC = IERC20(_aUSDC);
+        s.aavePool = IAavePool(_aavePool);
+        s.permit2 = _permit2; // may be address(0) if unused
+        s.ppUSDC = IERC20(_ppUSDC);
     
         // Deploy the shared ERC20 implementation once
-         s.positionERC20Implementation = address(new PositionERC20(address(this)));
+        s.positionERC20Implementation = address(new PositionERC20(address(this)));
 
     }
 
@@ -129,17 +128,20 @@ function getERC20PositionMeta(address token)
 
     registered     = s.erc20Registered[token];
     if (!registered) {
-        // Everything else stays default/zero
         return (false, 0, 0, "", "", "", "");
     }
 
     marketId       = s.erc20MarketId[token];
     positionId     = s.erc20PositionId[token];
-    positionName   = s.positionNames[positionId];
-    positionTicker = s.positionTickers[positionId];
+
+    // 🔧 FIX: index by (marketId, positionId)
+    positionName   = s.positionNames[marketId][positionId];
+    positionTicker = s.positionTickers[marketId][positionId];
+
     marketName     = s.marketNames[marketId];
     marketTicker   = s.marketTickers[marketId];
 }
+
 
 
 
@@ -423,34 +425,34 @@ function buyForUSDCWithUSDC(
     function getMarketPositions(uint256 marketId) external view returns (uint256[] memory) {
         return MarketManagementLib.getMarketPositions(marketId);
     }
-    function getMarketDetails(uint256 marketId) external view returns (string memory name, string memory ticker) {
-        StorageLib.Storage storage store = StorageLib.getStorage();
-        name = IPositionToken1155(store.positionToken1155).getMarketName(marketId);
-        ticker = IPositionToken1155(store.positionToken1155).getMarketTicker(marketId);
-        return (name, ticker);
-    }
-    function getPositionDetails(uint256 marketId, uint256 positionId)
-        external view
-        returns (string memory name, string memory ticker, uint256 backTokenId, uint256 layTokenId)
-    {
-        StorageLib.Storage storage store = StorageLib.getStorage();
-        backTokenId = StorageLib.encodeTokenId(uint64(marketId), uint64(positionId), true);
-        layTokenId  = StorageLib.encodeTokenId(uint64(marketId), uint64(positionId), false);
-        name = IPositionToken1155(store.positionToken1155).getPositionName(backTokenId);
-        ticker = IPositionToken1155(store.positionToken1155).getPositionTicker(backTokenId);
-        return (name, ticker, backTokenId, layTokenId);
-    }
+ 
+ function getMarketDetails(uint256 marketId)
+    external
+    view
+    returns (string memory name, string memory ticker)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    name   = s.marketNames[marketId];
+    ticker = s.marketTickers[marketId];
+}
 
-    function positionExists(uint256 marketId, uint256 positionId) external view returns (bool) {
-        return MarketManagementLib.positionExists(marketId, positionId);
-    }
+function getPositionDetails(uint256 marketId, uint256 positionId)
+    external
+    view
+    returns (string memory name, string memory ticker)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    name   = s.positionNames[marketId][positionId];
+    ticker = s.positionTickers[marketId][positionId];
+}
+
 
 
 
 // --- allowlist for DMMs ---
     function allowDMM(address account, bool allowed) external onlyOwner {
-        StorageLib.Storage storage store = StorageLib.getStorage();
-        store.allowedDMMs[account] = allowed;
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        s.allowedDMMs[account] = allowed;
         emit DMMAllowed(account, allowed);
     }
 
@@ -537,7 +539,7 @@ function erc20Name(uint256 marketId, uint256 positionId)
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
     string memory marketName   = s.marketNames[marketId];
-    string memory positionName = s.positionNames[positionId];
+    string memory positionName = s.positionNames[marketId][positionId]; 
 
     return string.concat(positionName, " in ", marketName);
 }
@@ -549,10 +551,11 @@ function erc20Symbol(uint256 marketId, uint256 positionId)
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
     string memory marketTicker   = s.marketTickers[marketId];
-    string memory positionTicker = s.positionTickers[positionId];
+    string memory positionTicker = s.positionTickers[marketId][positionId]; 
 
     return string.concat(positionTicker, "-", marketTicker);
 }
+
 
 
 
@@ -595,21 +598,9 @@ function invariant_systemFunding(uint256 marketId)
     return LedgerInvariantViews.totalFullSets(marketId);
 }
 
-function invariant_userFunding(uint256 marketId)
-    external
-    view
-    returns (bool ok, uint256 fullUser, uint256 fullSystem)
-{
-    return LedgerInvariantViews.checkUserFundingInvariant(marketId);
-}
 
-function invariant_balancedExposure(uint256 marketId)
-    external
-    view
-    returns (bool ok, int256 refE, uint256[] memory positions)
-{
-    return LedgerInvariantViews.checkBalancedExposure(marketId);
-}
+
+
 
 function invariant_tvl()
     external

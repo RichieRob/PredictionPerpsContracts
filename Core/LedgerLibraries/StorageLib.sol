@@ -133,7 +133,6 @@ library StorageLib {
 
 
         // Markets
-        address positionToken1155;
         uint256 nextMarketId;
         uint256[] allMarkets;
         mapping(uint256 => uint256) nextPositionId;
@@ -173,10 +172,10 @@ library StorageLib {
 mapping(uint256 => string) marketNames;    // marketId => name
 mapping(uint256 => string) marketTickers;  // marketId => ticker
 
-// Position-level metadata (per outcome, shared by Back/Lay accounting)
-// positionId is always scoped to a given marketId (see nextPositionId[marketId])
-mapping(uint256 => string) positionNames;    // positionId -> name
-mapping(uint256 => string) positionTickers;  // positionId -> ticker
+// Position-level metadata (scoped by marketId)
+mapping(uint256 => mapping(uint256 => string)) positionNames;   // marketId => positionId => name
+mapping(uint256 => mapping(uint256 => string)) positionTickers; // marketId => positionId => ticker
+
 
     // ERC20 implementation (shared logic)
     address positionERC20Implementation;
@@ -198,19 +197,5 @@ mapping(address => uint256) erc20PositionId;  // token => positionId
         bytes32 position = keccak256("MarketMakerLedger.storage");
         assembly { s.slot := position }
     }
-
-  
-
-
-    function encodeTokenId(uint64 marketId, uint64 positionId, bool isBack) internal pure returns (uint256) {
-        return (uint256(marketId) << 64) | (uint256(positionId) << 1) | (isBack ? 1 : 0);
-    }
-
-    function decodeTokenId(uint256 tokenId) internal pure returns (Types.TokenData memory) {
-        return Types.TokenData({
-            marketId: uint64(tokenId >> 64),
-            positionId: uint64((tokenId >> 1) & ((1 << 64) - 1)),
-            isBack: (tokenId & 1) == 1
-        });
-    }
+    
 }

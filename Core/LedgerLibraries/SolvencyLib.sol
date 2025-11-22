@@ -64,25 +64,59 @@ function ensureSolvency(address account, uint256 marketId) internal {
 }
 
 
-    function deallocateExcess(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        int256 realMin = computeRealMinShares(s, account, marketId);
-        int256 effMin = computeEffectiveMinShares(s, account, marketId, realMin);
-        if (effMin > 0) {
-            uint256 amount = uint256(effMin);
-            int256 redeemable = computeRedeemable(s, account, marketId);
-            int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
-            if (redeemable > 0) {
-                amount = _min(amount, uint256(netAlloc - redeemable));
-            }
-            if (MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
-                amount = _min(amount, uint256(netAlloc));
-            }
-            if (amount > 0) {
-                AllocateCapitalLib.deallocate(account, marketId, amount);
-            }
+function deallocateExcess(address account, uint256 marketId) internal {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+
+    int256 realMin = computeRealMinShares(s, account, marketId);
+    int256 effMin  = computeEffectiveMinShares(s, account, marketId, realMin);
+    if (effMin <= 0) return;
+
+    int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
+    if (netAlloc <= 0) return; // 🔒 nothing to deallocate by design
+
+    uint256 amount = uint256(effMin);
+
+    int256 redeemable = computeRedeemable(s, account, marketId);
+    if (redeemable > 0) {
+        int256 margin = netAlloc - redeemable;
+        if (margin > 0) {
+            amount = _min(amount, uint256(margin));
+        } else {
+            // margin <= 0 ⇒ no further deallocation headroom
+            amount = 0;
         }
     }
+
+    // For the DMM only:
+// If realMin < 0, it means the DMM is leaning on its ISC line to stay solvent.
+// In this state, we allow deallocation only up to the amount of *real* capital
+// the DMM actually has in the market (netAlloc).  
+//
+// Reason:
+//   - realMin < 0 ⇒ the DMM would be insolvent without ISC.
+//   - We must not deallocate so much that realMin becomes even more negative,
+//     because effectiveMin stays ≥ 0 only due to ISC.
+//   - netAlloc is the DMM’s remaining real stake; that is the maximum amount
+//     of capital that can safely be pulled out without violating solvency.
+//
+// Therefore:
+//   * If netAlloc > 0: cap deallocation at netAlloc.
+//   * If netAlloc ≤ 0: the DMM has no withdrawable real capital → amount = 0.
+
+
+    if (MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
+        if (netAlloc > 0) {
+            amount = _min(amount, uint256(netAlloc));
+        } else {
+            amount = 0;
+        }
+    }
+
+    if (amount > 0) {
+        AllocateCapitalLib.deallocate(account, marketId, amount);
+    }
+}
+
 
     function _min(uint256 a, uint256 b) private pure returns (uint256) {
         return a < b ? a : b;

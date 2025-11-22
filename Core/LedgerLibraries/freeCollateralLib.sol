@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
-using StorageLib for *;
 
 /// @title FreeCollateralLib
 /// @notice Helpers to adjust freeCollateral and totalFreeCollateral
@@ -11,17 +10,17 @@ library FreeCollateralLib {
 
       /// @dev Internal helper: emit a ppUSDC mint event via the ppUSDC contract.
     function emitPpUSDCMint(address to, uint256 amount) internal {
-        if (amount == 0) return;
-        Storage storage s = getStorage();
-        IPpUSDCEvents(address(s.ppUSDC)).externalMint(to, amount);
+    if (amount == 0) return;
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    IPpUSDCEvents(address(s.ppUSDC)).externalMint(to, amount);
+}
+
+    function emitPpUSDCBurn(address from, uint256 amount) internal {
+    if (amount == 0) return;
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    IPpUSDCEvents(address(s.ppUSDC)).externalBurn(from, amount);
     }
 
-    /// @dev Internal helper: emit a ppUSDC burn event via the ppUSDC contract.
-    function emitPpUSDCBurn(address from, uint256 amount) internal {
-        if (amount == 0) return;
-        Storage storage s = getStorage();
-        IPpUSDCEvents(address(s.ppUSDC)).externalBurn(from, amount);
-    }
 
     /// @notice Increase freeCollateral for an account and emit ppUSDC mint event.
     /// @dev Assumes caller has already decided this increase is valid.

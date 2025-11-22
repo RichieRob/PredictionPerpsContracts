@@ -4,8 +4,13 @@ pragma solidity ^0.8.20;
 import "./StorageLib.sol";
 import "./Types.sol";
 import "../../Interfaces/IPositionToken1155.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
+
 
 library MarketManagementLib {
+
+    using Clones for address;
+
     event MarketCreated(uint256 indexed marketId, string name, string ticker);
     event PositionCreated(uint256 indexed marketId, uint256 indexed positionId, string name, string ticker);
     event SyntheticLiquidityCreated(uint256 indexed marketId, uint256 amount, address dmm);
@@ -36,26 +41,38 @@ library MarketManagementLib {
         s.isExpanding[marketId] = true;
     }
 
-    function createPosition(
+   function createPosition(
         uint256 marketId,
         string memory name,
         string memory ticker
-    ) internal returns (uint256 positionId) {
+    )
+        internal
+        returns (uint256 positionId, address token)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.isExpanding[marketId], "Market locked");
-        require(s.positionToken1155 != address(0), "Position token not set");
 
+        require(s.isExpanding[marketId], "Market locked");
+
+        // 1. Allocate new positionId
         positionId = s.nextPositionId[marketId]++;
         s.marketPositions[marketId].push(positionId);
 
-        uint256 backTokenId = StorageLib.encodeTokenId(uint64(marketId), uint64(positionId), true);
-        uint256 layTokenId  = StorageLib.encodeTokenId(uint64(marketId), uint64(positionId), false);
+        // 2. Store meta centrally
+        s.positionNames[marketId][positionId]   = name;
+        s.positionTickers[marketId][positionId] = ticker;
 
-        IPositionToken1155(s.positionToken1155).setPositionMetadata(backTokenId, name, ticker, true);
-        IPositionToken1155(s.positionToken1155).setPositionMetadata(layTokenId, name, ticker, false);
+        // 3. Clone the shared ERC20 implementation
+        address impl = s.positionERC20Implementation;
+        require(impl != address(0), "ERC20 impl not set");
 
-        emit PositionCreated(marketId, positionId, name, ticker);
+        token = impl.clone(); // EIP-1167 minimal proxy
+
+        // 4. Register with ERC20 mapping (Back-only)
+        TokenERC20Lib.registerBackPositionERC20(token, marketId, positionId);
+
+        emit PositionCreated(marketId, positionId, token, name, ticker);
     }
+
 
     function lockMarketPositions(uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();

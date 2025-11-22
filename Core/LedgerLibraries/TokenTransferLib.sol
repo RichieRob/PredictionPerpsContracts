@@ -6,7 +6,21 @@ import "./SolvencyLib.sol";
 import "./HeapLib.sol";
 import "./MarketManagementLib.sol";
 
-library TradingLib {
+library TokenTransferLib {
+
+/*//////////////////////////////////////////////////////////////
+                       EVENTS
+//////////////////////////////////////////////////////////////*/
+
+event PositionTransfer(
+    address indexed from,
+    address indexed to,
+    uint256 indexed marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 amount
+);
+
     /*//////////////////////////////////////////////////////////////
                               CORE PRIMITIVES
     //////////////////////////////////////////////////////////////*/
@@ -129,5 +143,7 @@ library TradingLib {
         } else {
             transferLay(from, to, marketId, positionId, amount);
         }
+        emit PositionTransfer(from, to, marketId, positionId, isBack, amount);
+
     }
 }

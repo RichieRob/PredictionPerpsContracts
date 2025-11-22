@@ -128,4 +128,4 @@ library LMSRExecutionLib {
             LMSRViewLib.getBackPriceWadInternal(self, marketId, ledgerPositionId)
         );
     }
-}"
+}

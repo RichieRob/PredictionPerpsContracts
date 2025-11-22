@@ -2,11 +2,12 @@
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
+using StorageLib for *;
 
-/// @title FreeCollateralEventsLib
+/// @title FreeCollateralLib
 /// @notice Helpers to adjust freeCollateral and totalFreeCollateral
 ///         and mirror those changes as ppUSDC mint/burn events.
-library FreeCollateralEventsLib {
+library FreeCollateralLib {
 
       /// @dev Internal helper: emit a ppUSDC mint event via the ppUSDC contract.
     function emitPpUSDCMint(address to, uint256 amount) internal {
@@ -45,5 +46,15 @@ library FreeCollateralEventsLib {
 
         // Mirror as ppUSDC burn
         emitPpUSDCBurn(account, amount);
+    }
+
+    /// @notice Internal ppUSDC/freeCollateral transfer with NO events.
+    function transferFreeCollateral(address from, address to, uint256 amount) internal {
+        if (amount == 0 || from == to) return;
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        require(s.freeCollateral[from] >= amount, "Insufficient free collateral");
+        s.freeCollateral[from] -= amount;
+        s.freeCollateral[to]   += amount;
+        // totalFreeCollateral unchanged
     }
 }

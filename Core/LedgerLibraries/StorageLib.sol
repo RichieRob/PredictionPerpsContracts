@@ -166,6 +166,32 @@ library StorageLib {
         uint16  feeBps;                // e.g. 3 = 0.03%
         bool    feeEnabled;            // on/off
 
+
+// --- Market / Position metadata (central registry) ---
+
+// Market-level metadata
+mapping(uint256 => string) marketNames;    // marketId => name
+mapping(uint256 => string) marketTickers;  // marketId => ticker
+
+// Position-level metadata (per outcome, shared by Back/Lay accounting)
+// positionId is always scoped to a given marketId (see nextPositionId[marketId])
+mapping(uint256 => string) positionNames;    // positionId -> name
+mapping(uint256 => string) positionTickers;  // positionId -> ticker
+
+    // ERC20 implementation (shared logic)
+    address positionERC20Implementation;
+
+
+// --- ERC20 mirrors ---
+// Only BACK positions get native ERC20 wrappers.
+// Lay is always purely ledger-native (tilt + layOffset) and *never* ERC20.
+mapping(address => bool)    erc20Registered;  // token => has mapping
+mapping(address => uint256) erc20MarketId;    // token => marketId
+mapping(address => uint256) erc20PositionId;  // token => positionId
+
+
+
+
     }
 
     function getStorage() internal pure returns (Storage storage s) {

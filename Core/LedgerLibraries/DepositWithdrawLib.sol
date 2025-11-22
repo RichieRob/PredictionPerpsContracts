@@ -5,14 +5,22 @@ import "./StorageLib.sol";
 import "../../Interfaces/IERC20Permit.sol";
 import "../../Interfaces/IPermit2.sol";
 import "./TypesPermit.sol";
+import "./FreeCollateralLib.sol";
 import "./ProtocolFeeLib.sol";
-import "./freeCollateralLib.sol"; // assumes this defines FreeCollateralEventsLib
 
 /// @title DepositWithdrawLib
 /// @notice Handles trader deposits and withdrawals to/from Aave,
 ///         integrating optional protocol fee skimming via aUSDC.
 library DepositWithdrawLib {
     using TypesPermit for *;
+
+    // mode constants for unified deposit
+    // 0 = allowance (transferFrom)
+    // 1 = EIP-2612 permit
+    // 2 = Permit2
+    uint8 internal constant MODE_ALLOWANCE = 0;
+    uint8 internal constant MODE_EIP2612  = 1;
+    uint8 internal constant MODE_PERMIT2  = 2;
 
     // -----------------------------------------------------------------------
     // Core internal deposit
@@ -44,7 +52,7 @@ library DepositWithdrawLib {
         require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
 
         // 4. Credit net collateral to `to` (and emit ppUSDC Mint event)
-        FreeCollateralEventsLib.increaseFreeCollateralWithEvent(to, recordedAmount);
+        FreeCollateralLib.increaseFreeCollateralWithEvent(to, recordedAmount);
 
         // 5. Track TVL principal
         s.totalValueLocked += recordedAmount;
@@ -57,7 +65,19 @@ library DepositWithdrawLib {
     }
 
     // -----------------------------------------------------------------------
-    // Deposit using native EIP-2612 permit (USDC with permit)
+    // 1) Deposit via plain allowance/transferFrom
+    // -----------------------------------------------------------------------
+    function depositFromTraderWithAllowance(
+        address account,
+        address trader,
+        uint256 amount,
+        uint256 minUSDCDeposited
+    ) internal returns (uint256 recordedAmount) {
+        recordedAmount = _internalDeposit(trader, account, amount, minUSDCDeposited);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2) Deposit using native EIP-2612 permit (USDC with permit)
     // -----------------------------------------------------------------------
     function depositFromTraderWithEIP2612(
         address account,
@@ -84,7 +104,7 @@ library DepositWithdrawLib {
     }
 
     // -----------------------------------------------------------------------
-    // Deposit using Permit2 (e.g. across-chain compatible permit system)
+    // 3) Deposit using Permit2
     // -----------------------------------------------------------------------
     function depositFromTraderWithPermit2(
         address account,
@@ -109,6 +129,55 @@ library DepositWithdrawLib {
     }
 
     // -----------------------------------------------------------------------
+    // Unified 3-way helper
+    // -----------------------------------------------------------------------
+    /// @notice Unified entry: choose between allowance / EIP-2612 / Permit2.
+    /// @param account            Ledger account to credit.
+    /// @param trader             Address paying USDC (usually msg.sender).
+    /// @param amount             Nominal USDC to move.
+    /// @param minUSDCDeposited   Min credited after fees.
+    /// @param mode               0=allowance, 1=EIP-2612, 2=Permit2.
+    /// @param eipPermit          Only used if mode==1.
+    /// @param permit2Calldata    Only used if mode==2.
+    function depositFromTraderUnified(
+        address account,
+        address trader,
+        uint256 amount,
+        uint256 minUSDCDeposited,
+        uint8  mode,
+        TypesPermit.EIP2612Permit memory eipPermit,
+        bytes calldata permit2Calldata
+    ) internal returns (uint256 recordedAmount) {
+        if (mode == MODE_ALLOWANCE) {
+            // simple allowance + transferFrom path
+            recordedAmount = depositFromTraderWithAllowance(
+                account,
+                trader,
+                amount,
+                minUSDCDeposited
+            );
+        } else if (mode == MODE_EIP2612) {
+            recordedAmount = depositFromTraderWithEIP2612(
+                account,
+                trader,
+                amount,
+                minUSDCDeposited,
+                eipPermit
+            );
+        } else if (mode == MODE_PERMIT2) {
+            recordedAmount = depositFromTraderWithPermit2(
+                account,
+                trader,
+                amount,
+                minUSDCDeposited,
+                permit2Calldata
+            );
+        } else {
+            revert("Deposit: invalid mode");
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Withdraw directly to recipient (no fee)
     // -----------------------------------------------------------------------
     function withdrawTo(address account, uint256 amount, address to) internal {
@@ -117,7 +186,7 @@ library DepositWithdrawLib {
         require(to != address(0), "Invalid recipient");
 
         // This will revert internally if freeCollateral[account] < amount
-        FreeCollateralEventsLib.decreaseFreeCollateralWithEvent(account, amount);
+        FreeCollateralLib.decreaseFreeCollateralWithEvent(account, amount);
         s.totalValueLocked -= amount;
 
         // Withdraw from Aave directly to recipient

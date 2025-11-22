@@ -13,14 +13,13 @@ import "./LedgerLibraries/SolvencyLib.sol";
 import "./LedgerLibraries/HeapLib.sol";
 import "./LedgerLibraries/MarketManagementLib.sol";
 import "./LedgerLibraries/LedgerLib.sol";
-import "./LedgerLibraries/TradingLib.sol";
+import "./LedgerLibraries/TokenTransferLib.sol";
+import "./LedgerLibraries/TradeExecutionLib.sol";
 import "../Interfaces/IPositionToken1155.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
 import "./LedgerLibraries/LedgerInvariantViews.sol";
 
 using LedgerInvariantViews for *;
-
-
 
 contract MarketMakerLedger {
     using DepositWithdrawLib for *;
@@ -28,8 +27,6 @@ contract MarketMakerLedger {
     using HeapLib for *;
     using MarketManagementLib for *;
     using LedgerLib for *;
-    using TradingLib for *;
-
 
     event Deposited(address indexed account, uint256 amount);
     event Withdrawn(address indexed account, uint256 amount);
@@ -56,7 +53,11 @@ contract MarketMakerLedger {
         store.aavePool = IAavePool(_aavePool);
         store.positionToken1155 = _positionToken1155;
         store.permit2 = _permit2; // may be address(0) if unused
-        store.ppUSDC = IERC20(_ppUSDC)
+        store.ppUSDC = IERC20(_ppUSDC);
+    
+        // Deploy the shared ERC20 implementation once
+         s.positionERC20Implementation = address(new PositionERC20(address(this)));
+
     }
 
  
@@ -66,20 +67,22 @@ contract MarketMakerLedger {
         marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount);
     }
 
-    function createPosition(uint256 marketId, string memory name, string memory ticker) external onlyOwner returns (uint256 positionId) {
-        positionId = MarketManagementLib.createPosition(marketId, name, ticker);
+    function createPosition(
+    uint256 marketId,
+    string memory name,
+    string memory ticker
+    )
+    external
+    onlyOwner
+    returns (uint256 positionId, address token)
+    {
+    (positionId, token) = MarketManagementLib.createPosition(
+        marketId,
+        name,
+        ticker
+    );
     }
 
-    /// @notice Batch-create multiple positions for a market.
-    /// @param marketId The market ID to add positions to.
-    /// @param names Array of position names (must match tickers.length).
-    /// @param tickers Array of position tickers (must match names.length).
-    /// @return positionIds Array of newly created position IDs in order.
-    
-    struct PositionMeta {
-    string name;
-    string ticker;
-    }
 
     function createPositions(
     uint256 marketId,
@@ -105,47 +108,275 @@ contract MarketMakerLedger {
     }
 
 
-    // --- trading entrypoints ---
-    function processBuy(
-        address to,
+    // Exposure functions for the ERC20
+
+  // In MarketMakerLedger.sol
+
+function getERC20PositionMeta(address token)
+    external
+    view
+    returns (
+        bool   registered,
         uint256 marketId,
-        address account,
         uint256 positionId,
-        bool isBack,
-        uint256 usdcIn,
-        uint256 tokensOut,
-        uint256 minUSDCDeposited,
-        bool usePermit2,
-        bytes calldata permitBlob
+        string memory positionName,
+        string memory positionTicker,
+        string memory marketName,
+        string memory marketTicker
     )
-        external
-        returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt)
-    {
-        (recordedUSDC, freeCollateral, allocatedCapital, newTilt) = TradingLib.processBuy(
-            to, marketId, account, positionId, isBack, usdcIn, tokensOut, minUSDCDeposited, usePermit2, permitBlob
-        );
-        emit Bought(account, marketId, positionId, isBack, tokensOut, usdcIn, recordedUSDC);
-        emit TiltUpdated(account, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+
+    registered     = s.erc20Registered[token];
+    if (!registered) {
+        // Everything else stays default/zero
+        return (false, 0, 0, "", "", "", "");
     }
 
-    function processSell(
-        address to,
+    marketId       = s.erc20MarketId[token];
+    positionId     = s.erc20PositionId[token];
+    positionName   = s.positionNames[positionId];
+    positionTicker = s.positionTickers[positionId];
+    marketName     = s.marketNames[marketId];
+    marketTicker   = s.marketTickers[marketId];
+}
+
+
+
+function erc20TotalSupply(address token) external view returns (uint256) {
+    return TokenERC20Lib.erc20TotalSupply(token);
+}
+
+function erc20BalanceOf(address token, address account) external view returns (uint256) {
+    return TokenERC20Lib.erc20BalanceOf(token, account);
+}
+
+
+
+   // --- trading entrypoints using and updating internal ppUSDC---
+
+    function buyExactTokens(
+        address mm,
         uint256 marketId,
-        address account,
         uint256 positionId,
-        bool isBack,
-        uint256 tokensIn,
-        uint256 usdcOut
-    )
-        external
-        returns (uint256 freeCollateral, int256 allocatedCapital, int256 newTilt)
-    {
-        (freeCollateral, allocatedCapital, newTilt) = TradingLib.processSell(
-            to, marketId, account, positionId, isBack, tokensIn, usdcOut
+        bool    isBack,
+        uint256 t,
+        uint256 maxUSDCIn
+    ) external {
+        TradeExecutionLib.buyExactTokens(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            t,
+            maxUSDCIn
         );
-        emit Sold(account, marketId, positionId, isBack, tokensIn, usdcOut);
-        emit TiltUpdated(account, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
     }
+
+    function buyForppUSDC(
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 usdcIn,
+        uint256 minTokensOut
+    ) external {
+        TradeExecutionLib.buyForUSDC(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            usdcIn,
+            minTokensOut
+        );
+    }
+
+    function sellExactTokens(
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 t,
+        uint256 minUSDCOut
+    ) external {
+        TradeExecutionLib.sellExactTokens(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            t,
+            minUSDCOut
+        );
+    }
+
+    function sellForppUSDC(
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 usdcOut,
+        uint256 maxTokensIn
+    ) external {
+        TradeExecutionLib.sellForUSDC(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            usdcOut,
+            maxTokensIn
+        );
+    }
+
+   // --- trading entrypoints using and updating USDC directly---
+
+    function buyExactTokensWithUSDC(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 t,
+    uint256 maxUSDCFromWallet,
+    uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
+    TypesPermit.EIP2612Permit calldata eipPermit,
+    bytes  calldata permit2Calldata
+) external {
+    require(t > 0, "t=0");
+
+    // 1) Deposit from wallet -> ledger freeCollateral for msg.sender
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
+        msg.sender,           // ledger account credited
+        msg.sender,           // trader paying USDC
+        maxUSDCFromWallet,    // wallet amount we try to pull
+        0,                    // minUSDCDeposited; could add a param if you want
+        mode,
+        eipPermit,
+        permit2Calldata
+    );
+
+    // 2) Use `recorded` as the actual budget seen by the MM.
+    //    This guarantees freeCollateral >= usdcIn that TradeExecutionLib will burn.
+    TradeExecutionLib.buyExactTokens(
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        t,
+        recorded       // maxUSDCIn for the MM
+    );
+}
+
+function buyForUSDCWithUSDC(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 usdcFromWallet,
+    uint256 minTokensOut,
+    uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
+    TypesPermit.EIP2612Permit calldata eipPermit,
+    bytes  calldata permit2Calldata
+) external {
+    require(usdcFromWallet > 0, "usdcIn=0");
+
+    // 1) Deposit from wallet -> ledger freeCollateral
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
+        msg.sender,          // ledger account credited
+        msg.sender,          // trader paying USDC
+        usdcFromWallet,
+        0,                   // minUSDCDeposited
+        mode,
+        eipPermit,
+        permit2Calldata
+    );
+
+    // 2) Trade using whatever actually got credited (`recorded`)
+    TradeExecutionLib.buyForUSDC(
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        recorded,       // usdcIn as seen by MM / ledger
+        minTokensOut
+    );
+}
+
+    /// @notice Sell exact `t` tokens and withdraw the USDC proceeds to `to`.
+    function sellExactTokensForUSDCToWallet(
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 t,
+        uint256 minUSDCOut,
+        address to
+    ) external {
+        require(t > 0, "t=0");
+        require(to != address(0), "to=0");
+
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        uint256 beforeFree = s.freeCollateral[msg.sender];
+
+        // 1) Normal internal sell → credits freeCollateral (ppUSDC)
+        TradeExecutionLib.sellExactTokens(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            t,
+            minUSDCOut
+        );
+
+        // 2) Work out how much this trade just credited
+        uint256 afterFree = s.freeCollateral[msg.sender];
+        require(afterFree >= beforeFree, "freeCollateral underflow");
+        uint256 delta = afterFree - beforeFree;
+        require(delta > 0, "no proceeds");
+
+        // 3) Withdraw only that delta as real USDC to `to`
+        DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
+        emit Withdrawn(msg.sender, delta);
+    }
+
+    /// @notice Sell however many tokens are needed to get exactly `usdcOut`
+    ///         and withdraw that USDC directly to `to`.
+    function sellForUSDCToWallet(
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 usdcOut,
+        uint256 maxTokensIn,
+        address to
+    ) external {
+        require(usdcOut > 0, "usdcOut=0");
+        require(to != address(0), "to=0");
+
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        uint256 beforeFree = s.freeCollateral[msg.sender];
+
+        // 1) Normal internal sell → credits freeCollateral (ppUSDC)
+        TradeExecutionLib.sellForUSDC(
+            mm,
+            marketId,
+            positionId,
+            isBack,
+            usdcOut,
+            maxTokensIn
+        );
+
+        // 2) Work out how much this trade just credited
+        uint256 afterFree = s.freeCollateral[msg.sender];
+        require(afterFree >= beforeFree, "freeCollateral underflow");
+        uint256 delta = afterFree - beforeFree;
+        // Optional sanity check: delta should be == usdcOut in normal flow
+        require(delta > 0, "no proceeds");
+
+        // 3) Withdraw only that delta as real USDC to `to`
+        DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
+        emit Withdrawn(msg.sender, delta);
+    }
+
+
 
     // --- views / misc ---
 
@@ -251,6 +482,76 @@ function ppUSDCTransfer(address from, address to, uint256 amount) external {
     s.freeCollateral[from] -= amount;
     s.freeCollateral[to]   += amount;
 
+}
+
+
+// Deposit and Withdraw USDC
+
+// -----------------------------------------------------------------------
+// Unified Deposit (Allowance / EIP-2612 / Permit2)
+// -----------------------------------------------------------------------
+
+// mode: 0 = allowance, 1 = EIP-2612, 2 = Permit2
+function deposit(
+    address to,
+    uint256 amount,
+    uint256 minUSDCDeposited,
+    uint8   mode,
+    TypesPermit.EIP2612Permit calldata eipPermit,   // only used if mode==1
+    bytes  calldata permit2Calldata                 // only used if mode==2
+) external {
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
+        to,        // ledger account credited
+        msg.sender,        // trader paying USDC
+        amount,
+        minUSDCDeposited,
+        mode,
+        eipPermit,
+        permit2Calldata
+    );
+
+    emit Deposited(msg.sender, recorded);
+}
+
+function withdraw(uint256 amount, address to) external {
+    DepositWithdrawLib.withdrawTo(msg.sender, amount, to);
+    emit Withdrawn(msg.sender, amount);
+}
+
+//ERC20 Transfers
+
+function positionERC20Transfer(
+    address from,
+    address to,
+    uint256 amount
+) external {
+    TokenERC20Lib.erc20PositionTransfer(msg.sender, from, to, amount);
+}
+
+//ERC20 Names
+
+function erc20Name(uint256 marketId, uint256 positionId)
+    external
+    view
+    returns (string memory)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    string memory marketName   = s.marketNames[marketId];
+    string memory positionName = s.positionNames[positionId];
+
+    return string.concat(positionName, " in ", marketName);
+}
+
+function erc20Symbol(uint256 marketId, uint256 positionId)
+    external
+    view
+    returns (string memory)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    string memory marketTicker   = s.marketTickers[marketId];
+    string memory positionTicker = s.positionTickers[positionId];
+
+    return string.concat(positionTicker, "-", marketTicker);
 }
 
 

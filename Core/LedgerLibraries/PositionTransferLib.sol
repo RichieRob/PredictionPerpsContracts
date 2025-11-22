@@ -6,7 +6,7 @@ import "./SolvencyLib.sol";
 import "./HeapLib.sol";
 import "./MarketManagementLib.sol";
 
-library TokenTransferLib {
+library PositionTransferLib {
 
 /*//////////////////////////////////////////////////////////////
                        EVENTS

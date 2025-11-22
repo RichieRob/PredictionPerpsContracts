@@ -13,7 +13,7 @@ import "./LedgerLibraries/SolvencyLib.sol";
 import "./LedgerLibraries/HeapLib.sol";
 import "./LedgerLibraries/MarketManagementLib.sol";
 import "./LedgerLibraries/LedgerLib.sol";
-import "./LedgerLibraries/TokenTransferLib.sol";
+import "./LedgerLibraries/PositionTransferLib.sol";
 import "./LedgerLibraries/TradeExecutionLib.sol";
 import "../Interfaces/IPositionToken1155.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
@@ -144,11 +144,11 @@ function getERC20PositionMeta(address token)
 
 
 function erc20TotalSupply(address token) external view returns (uint256) {
-    return TokenERC20Lib.erc20TotalSupply(token);
+    return ERC20BridgeLib.erc20TotalSupply(token);
 }
 
 function erc20BalanceOf(address token, address account) external view returns (uint256) {
-    return TokenERC20Lib.erc20BalanceOf(token, account);
+    return ERC20BridgeLib.erc20BalanceOf(token, account);
 }
 
 
@@ -525,7 +525,7 @@ function positionERC20Transfer(
     address to,
     uint256 amount
 ) external {
-    TokenERC20Lib.erc20PositionTransfer(msg.sender, from, to, amount);
+    ERC20BridgeLib.erc20PositionTransfer(msg.sender, from, to, amount);
 }
 
 //ERC20 Names

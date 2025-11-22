@@ -68,7 +68,7 @@ library MarketManagementLib {
         token = impl.clone(); // EIP-1167 minimal proxy
 
         // 4. Register with ERC20 mapping (Back-only)
-        TokenERC20Lib.registerBackPositionERC20(token, marketId, positionId);
+        ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
 
         emit PositionCreated(marketId, positionId, token, name, ticker);
     }

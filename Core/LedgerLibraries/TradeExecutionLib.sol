@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./FreeCollateralLib.sol";
-import "./TokenTransferLib.sol";
+import "./PositionTransferLib.sol";
 import "../../Interfaces/IMarketMaker.sol";
 
 library TradeExecutionLib {
@@ -21,7 +21,7 @@ library TradeExecutionLib {
         uint256 tokensOut
     ) internal {
         FreeCollateralLib.decreaseFreeCollateralWithEvent(trader, usdcIn);
-        TokenTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             mm,
             trader,
             marketId,
@@ -40,7 +40,7 @@ library TradeExecutionLib {
         uint256 tokensIn,
         uint256 usdcOut
     ) internal {
-        TokenTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             trader,
             mm,
             marketId,

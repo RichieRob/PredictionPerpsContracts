@@ -1,4 +1,3 @@
-// attention needed to how we manage the fee. currently its just sent to the ledger and added to deposits
 
 
 // SPDX-License-Identifier: MIT
@@ -22,8 +21,6 @@ import "./PositionERC20.sol";
 using LedgerInvariantViews for *;
 
 contract MarketMakerLedger {
-    using DepositWithdrawLib for *;
-    using SolvencyLib for *;
     using HeapLib for *;
     using MarketManagementLib for *;
     using LedgerLib for *;
@@ -91,15 +88,14 @@ contract MarketMakerLedger {
 
     positionIds = new uint256[](positions.length);
     for (uint256 i = 0; i < positions.length; i++) {
-        positionIds[i] = MarketManagementLib.createPosition(
+        (uint256 positionId, ) = MarketManagementLib.createPosition(
             marketId,
             positions[i].name,
             positions[i].ticker
         );
+        positionIds[i] = positionId;
      }
     }
-
-    function addPositionToExpandingMarket(uint256 marketId, string memory name, string memory ticker) external onlyOwner { MarketManagementLib.splitFromOther(marketId, name, ticker); }
 
     // --- owner finance ops ---
     function withdrawInterest() external onlyOwner {
@@ -385,7 +381,7 @@ function buyForUSDCWithUSDC(
 
     function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
         external view
-        returns (uint256 freeCollateral, int256 allocatedCapital, int256 tilt)
+        returns (uint256 freeCollateral, int256 marketExposure, int256 tilt)
     {
         return LedgerLib.getPositionLiquidity(account, marketId, positionId);
     }
@@ -394,9 +390,9 @@ function buyForUSDCWithUSDC(
         external view
         returns (int256)
     {
-        (uint256 freeCollateral, int256 allocatedCapital, int256 tilt) =
+        (uint256 freeCollateral, int256 marketExposure, int256 tilt) =
             LedgerLib.getPositionLiquidity(account, marketId, positionId);
-        return int256(freeCollateral) + allocatedCapital + int256(tilt);
+        return int256(freeCollateral) + marketExposure + int256(tilt);
     }
 
     function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId) {

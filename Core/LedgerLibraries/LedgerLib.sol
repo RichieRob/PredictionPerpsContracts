@@ -18,7 +18,7 @@ library LedgerLib {
     view
     returns (
         uint256 freeCollateral,
-        int256  virtualOffset,
+        int256  marketExposure,
         int256  tilt
     )
 {
@@ -31,7 +31,7 @@ library LedgerLib {
 
     int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
 
-    virtualOffset = netAlloc + s.layOffset[account][marketId];
+    marketExposure = netAlloc + s.layOffset[account][marketId];
 
     tilt = s.tilt[account][marketId][positionId];
 }
@@ -43,10 +43,10 @@ function getAvailableShares(address account, uint256 marketId, uint256 positionI
     view
     returns (int256)
 {
-    (uint256 freeCollateral, int256 virtualOffset, int256 tilt) =
+    (uint256 freeCollateral, int256 marketExposure, int256 tilt) =
         getPositionLiquidity(account, marketId, positionId);
 
-    return int256(freeCollateral) + virtualOffset + int256(tilt);
+    return int256(freeCollateral) + marketExposure + int256(tilt);
 }
 
 

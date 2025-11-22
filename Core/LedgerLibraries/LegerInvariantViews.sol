@@ -30,16 +30,16 @@ library LedgerInvariantViews {
                        2. EFFECTIVE MIN SHARES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Effective minimum available shares for mmId in marketId.
+    /// @notice Effective minimum available shares for account in marketId.
     /// @dev effMin = realMinShares + syntheticCollateral (for DMM).
-    function effectiveMinShares(uint256 mmId, uint256 marketId)
+    function effectiveMinShares(address account, uint256 marketId)
         internal
         view
         returns (int256 effMin)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        int256 realMin = SolvencyLib.computeRealMinShares(s, mmId, marketId);
-        effMin = SolvencyLib.computeEffectiveMinShares(s, mmId, marketId, realMin);
+        int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
+        effMin = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -58,8 +58,8 @@ library LedgerInvariantViews {
     function iscSpent(uint256 marketId) internal view returns (uint256) {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        uint256 dmmId = s.marketToDMM[marketId];
-        int256 realMin = SolvencyLib.computeRealMinShares(s, dmmId, marketId);
+        address dmm = s.marketToDMM[marketId];
+        int256 realMin = SolvencyLib.computeRealMinShares(s, dmm, marketId);
         if (realMin >= 0) return 0;
         return uint256(-realMin);
     }
@@ -80,7 +80,11 @@ library LedgerInvariantViews {
                          5. TOKEN-SIDE HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function backSupply(uint256 marketId, uint256 positionId) internal view returns (uint256) {
+    function backSupply(uint256 marketId, uint256 positionId)
+        internal
+        view
+        returns (uint256)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256 backTokenId = StorageLib.encodeTokenId(
             uint64(marketId),
@@ -90,7 +94,11 @@ library LedgerInvariantViews {
         return IPositionToken1155(s.positionToken1155).totalSupply(backTokenId);
     }
 
-    function laySupply(uint256 marketId, uint256 positionId) internal view returns (uint256) {
+    function laySupply(uint256 marketId, uint256 positionId)
+        internal
+        view
+        returns (uint256)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256 layTokenId = StorageLib.encodeTokenId(
             uint64(marketId),
@@ -102,7 +110,11 @@ library LedgerInvariantViews {
 
     /// @notice User exposure to outcome i:
     ///         UserExposure_i = B_i + sum_{j != i} L_j
-    function userExposure(uint256 marketId, uint256 positionId) internal view returns (int256) {
+    function userExposure(uint256 marketId, uint256 positionId)
+        internal
+        view
+        returns (int256)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256[] storage positions = s.marketPositions[marketId];
 
@@ -136,6 +148,7 @@ library LedgerInvariantViews {
                 minB = B;
             }
         }
+
         if (minB == type(uint256).max) return 0;
         return minB;
     }
@@ -170,21 +183,21 @@ library LedgerInvariantViews {
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        uint256 dmmId = s.marketToDMM[marketId];
+        address dmm = s.marketToDMM[marketId];
 
         // User side
         int256 userExp = userExposure(marketId, positionId);
 
         // MM side baseline: netUSDCAllocation + layOffset
-        int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, dmmId, marketId);
-        int256 base     = netAlloc + s.layOffset[dmmId][marketId];
+        int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, dmm, marketId);
+        int256 base     = netAlloc + s.layOffset[dmm][marketId];
 
         // Synthetic usage and local tilt
         uint256 isc  = iscSpent(marketId);
-        int128  tilt = s.tilt[dmmId][marketId][positionId];
+        int256  tilt = s.tilt[dmm][marketId][positionId];
 
         // E_i = userExposure_i + (netUSDCAllocation + iscSpent + layOffset + tilt[i])
-        return userExp + base + int256(uint256(isc)) + int256(tilt);
+        return userExp + base + int256(isc) + tilt;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -214,5 +227,21 @@ library LedgerInvariantViews {
             }
         }
         return (true, reference, positions);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                 9. TVL vs aUSDC BALANCE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Compare totalValueLocked against aUSDC balance held by the ledger.
+    /// @dev Invariant target: tvl == aUSDC.balanceOf(address(this)).
+    function tvlAccounting()
+        internal
+        view
+        returns (uint256 tvl, uint256 aUSDCBalance)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        tvl           = s.totalValueLocked; // or recompute as TotalMarketsValue + totalFreeCollateral
+        aUSDCBalance  = s.aUSDC.balanceOf(address(this));
     }
 }

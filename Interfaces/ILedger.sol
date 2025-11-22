@@ -4,17 +4,16 @@ pragma solidity ^0.8.20;
 
 interface ILedger {
     // Events
-    event Deposited(uint256 indexed mmId, uint256 amount);
-    event Withdrawn(uint256 indexed mmId, uint256 amount);
-    event TiltUpdated(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int128 newTilt);
-    event Bought(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
-    event Sold(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
+    event Deposited(address indexed account, uint256 amount);
+    event Withdrawn(address indexed account, uint256 amount);
+    event TiltUpdated(address indexed account, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
+    event Bought(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
+    event Sold(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
     event Redeemed(uint256 indexed marketId, uint256 amount);
-    event MarketMakerRegistered(address indexed mmAddress, uint256 mmId);
-    event LiquidityTransferred(uint256 indexed mmId, address indexed oldAddress, address indexed newAddress);
+    event MarketMakerRegistered(address indexed mmAddress, address account);
+    event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
 
     // Market and Position Management
-    function registerMarketMaker() external returns (uint256 mmId);
     function createMarket(string memory name, string memory ticker) external returns (uint256 marketId);
     function createPosition(uint256 marketId, string memory name, string memory ticker) external returns (uint256 positionId);
 
@@ -28,7 +27,7 @@ interface ILedger {
     function processBuy(
         address to,
         uint256 marketId,
-        uint256 mmId,
+        address account,
         uint256 positionId,
         bool isBack,
         uint256 usdcIn,
@@ -36,24 +35,24 @@ interface ILedger {
         uint256 minUSDCDeposited,
         bool usePermit2,
         bytes calldata permitBlob
-    ) external returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int128 newTilt);
+    ) external returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
 
     function processSell(
         address to,
         uint256 marketId,
-        uint256 mmId,
+        address account,
         uint256 positionId,
         bool isBack,
         uint256 tokensIn,
         uint256 usdcOut
-    ) external returns (uint256 freeCollateral, int256 allocatedCapital, int128 newTilt);
+    ) external returns (uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
 
     // Views / Miscellaneous
-    function transferLiquidity(uint256 mmId, address newAddress) external;
-    function getPositionLiquidity(uint256 mmId, uint256 marketId, uint256 positionId)
-        external view returns (uint256 freeCollateral, int256 allocatedCapital, int128 tilt);
-    function getAvailableShares(uint256 mmId, uint256 marketId, uint256 positionId) external view returns (int256);
-    function getMinTilt(uint256 mmId, uint256 marketId) external view returns (int128 minTilt, uint256 minPositionId);
+    function transferLiquidity(address account, address newAddress) external;
+    function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
+        external view returns (uint256 freeCollateral, int256 allocatedCapital, int256 tilt);
+    function getAvailableShares(address account, uint256 marketId, uint256 positionId) external view returns (int256);
+    function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId);
     function getMarketValue(uint256 marketId) external view returns (uint256);
     function getTotalMarketsValue() external view returns (uint256);
     function getTotalFreeCollateral() external view returns (uint256);

@@ -9,14 +9,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../Interfaces/ILedger.sol";
 import "./LedgerLibraries/StorageLib.sol";
 import "./LedgerLibraries/DepositWithdrawLib.sol";
-import "./LedgerLibraries/TokenOpsLib.sol";
 import "./LedgerLibraries/SolvencyLib.sol";
 import "./LedgerLibraries/HeapLib.sol";
 import "./LedgerLibraries/MarketManagementLib.sol";
-import "./LedgerLibraries/LiquidityLib.sol";
 import "./LedgerLibraries/LedgerLib.sol";
 import "./LedgerLibraries/TradingLib.sol";
-import "./LedgerLibraries/RedemptionLib.sol";
 import "../Interfaces/IPositionToken1155.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
 import "./LedgerLibraries/LedgerInvariantViews.sol";
@@ -27,30 +24,31 @@ using LedgerInvariantViews for *;
 
 contract MarketMakerLedger {
     using DepositWithdrawLib for *;
-    using TokenOpsLib for *;
     using SolvencyLib for *;
     using HeapLib for *;
     using MarketManagementLib for *;
-    using LiquidityLib for *;
     using LedgerLib for *;
     using TradingLib for *;
-    using RedemptionLib for *;
 
-    event Deposited(uint256 indexed mmId, uint256 amount);
-    event Withdrawn(uint256 indexed mmId, uint256 amount);
-    event TiltUpdated(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int128 newTilt);
-    event Bought(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
-    event Sold(uint256 indexed mmId, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
+
+    event Deposited(address indexed account, uint256 amount);
+    event Withdrawn(address indexed account, uint256 amount);
+    event TiltUpdated(address indexed account, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
+    event Bought(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
+    event Sold(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
     event Redeemed(uint256 indexed marketId, uint256 amount);
-    event MarketMakerRegistered(address indexed mmAddress, uint256 mmId);
-    event LiquidityTransferred(uint256 indexed mmId, address indexed oldAddress, address indexed newAddress);
+    event MarketMakerRegistered(address indexed mmAddress, address account);
+    event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
+    event DMMAllowed(address indexed account, bool allowed);
+
+
 
     modifier onlyOwner() {
         require(msg.sender == StorageLib.getStorage().owner, "Only owner");
         _;
     }
 
-    constructor(address _usdc, address _aUSDC, address _aavePool, address _positionToken1155, address _permit2) {
+    constructor(address _usdc, address _aUSDC, address _aavePool, address _positionToken1155, address _permit2, address _ppUSDC ) {
         StorageLib.Storage storage store = StorageLib.getStorage();
         store.owner = msg.sender;
         store.usdc = IERC20(_usdc);
@@ -58,18 +56,14 @@ contract MarketMakerLedger {
         store.aavePool = IAavePool(_aavePool);
         store.positionToken1155 = _positionToken1155;
         store.permit2 = _permit2; // may be address(0) if unused
+        store.ppUSDC = IERC20(_ppUSDC)
     }
 
-    function registerMarketMaker() external returns (uint256 mmId) {
-        StorageLib.Storage storage store = StorageLib.getStorage();
-        mmId = store.nextMMId++;
-        store.mmIdToAddress[mmId] = msg.sender;
-        emit MarketMakerRegistered(msg.sender, mmId);
-    }
+ 
 
     // --- market / position management  ---
-    function createMarket(string memory name, string memory ticker, uint256 dmmId, uint256 iscAmount) external onlyOwner returns (uint256 marketId) {
-        marketId = MarketManagementLib.createMarket(name, ticker, dmmId, iscAmount);
+    function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount) external onlyOwner returns (uint256 marketId) {
+        marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount);
     }
 
     function createPosition(uint256 marketId, string memory name, string memory ticker) external onlyOwner returns (uint256 positionId) {
@@ -110,16 +104,12 @@ contract MarketMakerLedger {
         DepositWithdrawLib.withdrawInterest(msg.sender);
     }
 
-    // --- redemption ---
-    function redeemSet(uint256 marketId, uint256[] memory positionIds, uint256 amount, address to) external {
-        RedemptionLib.redeemSet(marketId, positionIds, amount, to);
-    }
 
     // --- trading entrypoints ---
     function processBuy(
         address to,
         uint256 marketId,
-        uint256 mmId,
+        address account,
         uint256 positionId,
         bool isBack,
         uint256 usdcIn,
@@ -129,62 +119,59 @@ contract MarketMakerLedger {
         bytes calldata permitBlob
     )
         external
-        returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int128 newTilt)
+        returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt)
     {
         (recordedUSDC, freeCollateral, allocatedCapital, newTilt) = TradingLib.processBuy(
-            to, marketId, mmId, positionId, isBack, usdcIn, tokensOut, minUSDCDeposited, usePermit2, permitBlob
+            to, marketId, account, positionId, isBack, usdcIn, tokensOut, minUSDCDeposited, usePermit2, permitBlob
         );
-        emit Bought(mmId, marketId, positionId, isBack, tokensOut, usdcIn, recordedUSDC);
-        emit TiltUpdated(mmId, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
+        emit Bought(account, marketId, positionId, isBack, tokensOut, usdcIn, recordedUSDC);
+        emit TiltUpdated(account, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
     }
 
     function processSell(
         address to,
         uint256 marketId,
-        uint256 mmId,
+        address account,
         uint256 positionId,
         bool isBack,
         uint256 tokensIn,
         uint256 usdcOut
     )
         external
-        returns (uint256 freeCollateral, int256 allocatedCapital, int128 newTilt)
+        returns (uint256 freeCollateral, int256 allocatedCapital, int256 newTilt)
     {
         (freeCollateral, allocatedCapital, newTilt) = TradingLib.processSell(
-            to, marketId, mmId, positionId, isBack, tokensIn, usdcOut
+            to, marketId, account, positionId, isBack, tokensIn, usdcOut
         );
-        emit Sold(mmId, marketId, positionId, isBack, tokensIn, usdcOut);
-        emit TiltUpdated(mmId, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
+        emit Sold(account, marketId, positionId, isBack, tokensIn, usdcOut);
+        emit TiltUpdated(account, marketId, positionId, freeCollateral, allocatedCapital, newTilt);
     }
 
     // --- views / misc ---
-    function transferLiquidity(uint256 mmId, address newAddress) external {
-        LiquidityLib.transferLiquidity(mmId, newAddress);
-        emit LiquidityTransferred(mmId, msg.sender, newAddress);
-    }
 
-    function getPositionLiquidity(uint256 mmId, uint256 marketId, uint256 positionId)
+
+    function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
         external view
-        returns (uint256 freeCollateral, int256 allocatedCapital, int128 tilt)
+        returns (uint256 freeCollateral, int256 allocatedCapital, int256 tilt)
     {
-        return LedgerLib.getPositionLiquidity(mmId, marketId, positionId);
+        return LedgerLib.getPositionLiquidity(account, marketId, positionId);
     }
 
-    function getAvailableShares(uint256 mmId, uint256 marketId, uint256 positionId)
+    function getAvailableShares(address account, uint256 marketId, uint256 positionId)
         external view
         returns (int256)
     {
-        (uint256 freeCollateral, int256 allocatedCapital, int128 tilt) =
-            LedgerLib.getPositionLiquidity(mmId, marketId, positionId);
+        (uint256 freeCollateral, int256 allocatedCapital, int256 tilt) =
+            LedgerLib.getPositionLiquidity(account, marketId, positionId);
         return int256(freeCollateral) + allocatedCapital + int256(tilt);
     }
 
-    function getMinTilt(uint256 mmId, uint256 marketId) external view returns (int128 minTilt, uint256 minPositionId) {
-        return LedgerLib.getMinTilt(mmId, marketId);
+    function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId) {
+        return LedgerLib.getMinTilt(account, marketId);
     }
 
-    function getMaxTilt(uint256 mmId, uint256 marketId) external view returns (int128 maxTilt, uint256 maxPositionId) {
-        return LedgerLib.getMaxTilt(mmId, marketId);
+    function getMaxTilt(address account, uint256 marketId) external view returns (int256 maxTilt, uint256 maxPositionId) {
+        return LedgerLib.getMaxTilt(account, marketId);
     }
 
     function getMarketValue(uint256 marketId) external view returns (uint256) {
@@ -230,10 +217,10 @@ contract MarketMakerLedger {
 
 
 // --- allowlist for DMMs ---
-    function allowDMM(uint256 mmId, bool allowed) external onlyOwner {
+    function allowDMM(address account, bool allowed) external onlyOwner {
         StorageLib.Storage storage store = StorageLib.getStorage();
-        store.allowedDMMs[mmId] = allowed;
-        emit DMMAllowed(mmId, allowed);
+        store.allowedDMMs[account] = allowed;
+        emit DMMAllowed(account, allowed);
     }
 
         /*//////////////////////////////////////////////////////////////
@@ -243,5 +230,93 @@ contract MarketMakerLedger {
     function setFeeConfig(address recipient, uint16 bps, bool enabled) external onlyOwner {
     ProtocolFeeLib.setFeeConfig(recipient, bps, enabled);
 }
+
+
+// ppUSDC views
+
+function freeCollateralOf(address account) external view returns (uint256) {
+    return StorageLib.getStorage().freeCollateral[account];
+}
+
+function totalFreeCollateral() external view returns (uint256) {
+    return StorageLib.getStorage().totalFreeCollateral;
+}
+
+function ppUSDCTransfer(address from, address to, uint256 amount) external {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    require(msg.sender == s.ppUSDC, "Only ppUSDC");
+
+    // ↓ bookkeeping: move freeCollateral between accounts
+    require(s.freeCollateral[from] >= amount, "Insufficient ppUSDC");
+    s.freeCollateral[from] -= amount;
+    s.freeCollateral[to]   += amount;
+
+}
+
+
+
+
+
+// EXPOSE LIBRARY FOR TESTS
+
+
+function invariant_marketAccounting(uint256 marketId)
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.marketAccounting(marketId);
+}
+
+function invariant_iscWithinLine(uint256 marketId)
+    external
+    view
+    returns (uint256 used, uint256 line)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    used = LedgerInvariantViews.iscSpent(marketId);
+    line = s.syntheticCollateral[marketId];
+}
+
+function invariant_effectiveMin(address account, uint256 marketId)
+    external
+    view
+    returns (int256 effMin)
+{
+    return LedgerInvariantViews.effectiveMinShares(account, marketId);
+}
+
+function invariant_systemFunding(uint256 marketId)
+    external
+    view
+    returns (uint256 fullSetsSystem)
+{
+    return LedgerInvariantViews.totalFullSets(marketId);
+}
+
+function invariant_userFunding(uint256 marketId)
+    external
+    view
+    returns (bool ok, uint256 fullUser, uint256 fullSystem)
+{
+    return LedgerInvariantViews.checkUserFundingInvariant(marketId);
+}
+
+function invariant_balancedExposure(uint256 marketId)
+    external
+    view
+    returns (bool ok, int256 refE, uint256[] memory positions)
+{
+    return LedgerInvariantViews.checkBalancedExposure(marketId);
+}
+
+function invariant_tvl()
+    external
+    view
+    returns (uint256 tvl, uint256 aUSDCBalance)
+{
+    return LedgerInvariantViews.tvlAccounting();
+}
+
 
 }

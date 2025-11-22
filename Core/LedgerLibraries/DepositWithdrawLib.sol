@@ -6,6 +6,7 @@ import "../../Interfaces/IERC20Permit.sol";
 import "../../Interfaces/IPermit2.sol";
 import "./TypesPermit.sol";
 import "./ProtocolFeeLib.sol";
+import "./freeCollateralLib.sol"; // assumes this defines FreeCollateralEventsLib
 
 /// @title DepositWithdrawLib
 /// @notice Handles trader deposits and withdrawals to/from Aave,
@@ -14,10 +15,52 @@ library DepositWithdrawLib {
     using TypesPermit for *;
 
     // -----------------------------------------------------------------------
+    // Core internal deposit
+    // -----------------------------------------------------------------------
+    /// @dev Pulls USDC from `from` (if non-zero), supplies to Aave, skims fees,
+    ///      credits freeCollateral for `to`, updates TVL and returns recordedAmount.
+    function _internalDeposit(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 minUSDCDeposited
+    ) internal returns (uint256 recordedAmount) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+
+        // 1. Pull from user if requested (for Permit2 we can pass from = address(0))
+        if (from != address(0)) {
+            require(s.usdc.transferFrom(from, address(this), amount), "USDC pull fail");
+        }
+
+        // 2. Supply to Aave
+        s.usdc.approve(address(s.aavePool), amount);
+        uint256 a0 = s.aUSDC.balanceOf(address(this));
+        s.aavePool.supply(address(s.usdc), amount, address(this), 0);
+        uint256 a1 = s.aUSDC.balanceOf(address(this));
+        uint256 aReceived = a1 - a0;
+
+        // 3. Skim protocol fee (if enabled)
+        recordedAmount = ProtocolFeeLib.skimOnAaveSupply(aReceived);
+        require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
+
+        // 4. Credit net collateral to `to` (and emit ppUSDC Mint event)
+        FreeCollateralEventsLib.increaseFreeCollateralWithEvent(to, recordedAmount);
+
+        // 5. Track TVL principal
+        s.totalValueLocked += recordedAmount;
+    }
+
+    /// @notice Simple direct deposit from msg.sender → msg.sender with no min.
+    function simpleDeposit(uint256 amount) internal returns (uint256 recordedAmount) {
+        // from = msg.sender, to = msg.sender, minUSDCDeposited = 0
+        recordedAmount = _internalDeposit(msg.sender, msg.sender, amount, 0);
+    }
+
+    // -----------------------------------------------------------------------
     // Deposit using native EIP-2612 permit (USDC with permit)
     // -----------------------------------------------------------------------
     function depositFromTraderWithEIP2612(
-        uint256 mmId,
+        address account,
         address trader,
         uint256 amount,
         uint256 minUSDCDeposited,
@@ -36,32 +79,15 @@ library DepositWithdrawLib {
             p.s
         );
 
-        // 2. Pull USDC from trader
-        require(s.usdc.transferFrom(trader, address(this), amount), "USDC pull fail");
-
-        // 3. Supply to Aave
-        s.usdc.approve(address(s.aavePool), amount);
-        uint256 a0 = s.aUSDC.balanceOf(address(this));
-        s.aavePool.supply(address(s.usdc), amount, address(this), 0);
-        uint256 a1 = s.aUSDC.balanceOf(address(this));
-        uint256 aReceived = a1 - a0;
-
-        // 4. Skim protocol fee (if enabled)
-        recordedAmount = ProtocolFeeLib.skimOnAaveSupply(aReceived);
-
-        require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
-
-        // 5. Credit net collateral to MM
-        s.freeCollateral[mmId] += recordedAmount;
-        s.totalFreeCollateral += recordedAmount;
-        s.totalValueLocked += recordedAmount;
+        // 2. Use shared internalDeposit to pull from trader and credit `account`
+        recordedAmount = _internalDeposit(trader, account, amount, minUSDCDeposited);
     }
 
     // -----------------------------------------------------------------------
     // Deposit using Permit2 (e.g. across-chain compatible permit system)
     // -----------------------------------------------------------------------
     function depositFromTraderWithPermit2(
-        uint256 mmId,
+        address account,
         address trader,
         uint256 amount,
         uint256 minUSDCDeposited,
@@ -70,7 +96,7 @@ library DepositWithdrawLib {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.permit2 != address(0), "Permit2 not set");
 
-        // 1. Permit2 transfer to ledger
+        // 1. Permit2 transfer to ledger (this already pulls tokens)
         IPermit2(s.permit2).permitTransferFrom(
             permit2Calldata,
             trader,
@@ -78,36 +104,20 @@ library DepositWithdrawLib {
             amount
         );
 
-        // 2. Supply to Aave
-        s.usdc.approve(address(s.aavePool), amount);
-        uint256 a0 = s.aUSDC.balanceOf(address(this));
-        s.aavePool.supply(address(s.usdc), amount, address(this), 0);
-        uint256 a1 = s.aUSDC.balanceOf(address(this));
-        uint256 aReceived = a1 - a0;
-
-        // 3. Skim protocol fee (if enabled)
-        recordedAmount = ProtocolFeeLib.skimOnAaveSupply(aReceived);
-
-        require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
-
-        // 4. Credit net collateral to MM
-        s.freeCollateral[mmId] += recordedAmount;
-        s.totalFreeCollateral += recordedAmount;
-        s.totalValueLocked += recordedAmount;
+        // 2. Shared internalDeposit, but skip transferFrom (from = address(0))
+        recordedAmount = _internalDeposit(address(0), account, amount, minUSDCDeposited);
     }
 
     // -----------------------------------------------------------------------
     // Withdraw directly to recipient (no fee)
     // -----------------------------------------------------------------------
-    function withdrawTo(uint256 mmId, uint256 amount, address to) internal {
+    function withdrawTo(address account, uint256 amount, address to) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.mmIdToAddress[mmId] == msg.sender, "Invalid MMId");
-        require(s.freeCollateral[mmId] >= amount, "Insufficient free collateral");
+        require(account == msg.sender, "Invalid account");
         require(to != address(0), "Invalid recipient");
 
-        // Update accounting before external call
-        s.freeCollateral[mmId] -= amount;
-        s.totalFreeCollateral -= amount;
+        // This will revert internally if freeCollateral[account] < amount
+        FreeCollateralEventsLib.decreaseFreeCollateralWithEvent(account, amount);
         s.totalValueLocked -= amount;
 
         // Withdraw from Aave directly to recipient

@@ -8,7 +8,7 @@ import "../../Interfaces/IPositionToken1155.sol";
 library MarketManagementLib {
     event MarketCreated(uint256 indexed marketId, string name, string ticker);
     event PositionCreated(uint256 indexed marketId, uint256 indexed positionId, string name, string ticker);
-    event SyntheticLiquidityCreated(uint256 indexed marketId, uint256 amount, uint256 dmmId);
+    event SyntheticLiquidityCreated(uint256 indexed marketId, uint256 amount, address dmm);
     event MarketLocked(uint256 indexed marketId);
 
     // -------------------------------------------------------------
@@ -17,20 +17,20 @@ library MarketManagementLib {
     function createMarket(
         string memory name,
         string memory ticker,
-        uint256 dmmId,
+        address dmm,
         uint256 iscAmount
     ) internal returns (uint256 marketId) {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.allowedDMMs[dmmId], "DMM not allowed");
+        require(s.allowedDMMs[dmm], "DMM not allowed");
         marketId = s.nextMarketId++;
         s.allMarkets.push(marketId);
 
         IPositionToken1155(s.positionToken1155).setMarketMetadata(marketId, name, ticker);
-        s.marketToDMM[marketId] = dmmId;
+        s.marketToDMM[marketId] = dmm;
         s.syntheticCollateral[marketId] = iscAmount;
 
         emit MarketCreated(marketId, name, ticker);
-        emit SyntheticLiquidityCreated(marketId, iscAmount, dmmId);
+        emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
 
         // By default, allow position expansion at creation
         s.isExpanding[marketId] = true;
@@ -85,13 +85,13 @@ library MarketManagementLib {
         return s.allMarkets;
     }
 
-    function isDMM(uint256 mmId, uint256 marketId)
+    function isDMM(address account, uint256 marketId)
         internal
         view
         returns (bool)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        return s.marketToDMM[marketId] == mmId;
+        return s.marketToDMM[marketId] == account;
     }
 
     // -------------------------------------------------------------

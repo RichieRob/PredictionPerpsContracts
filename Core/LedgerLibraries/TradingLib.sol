@@ -1,120 +1,133 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
-import "./DepositWithdrawLib.sol";
 import "./SolvencyLib.sol";
 import "./HeapLib.sol";
-import "./TokenOpsLib.sol";
-import "./LedgerLib.sol";
-import "./TypesPermit.sol";
 import "./MarketManagementLib.sol";
 
 library TradingLib {
-    using TypesPermit for *;
+    /*//////////////////////////////////////////////////////////////
+                              CORE PRIMITIVES
+    //////////////////////////////////////////////////////////////*/
 
-    function receiveBackToken(uint256 mmId, uint256 marketId, uint256 positionId, uint256 amount) internal {
-        HeapLib.updateTilt(mmId, marketId, positionId, int128(uint128(amount)));
-        TokenOpsLib.burnToken(marketId, positionId, true, amount, msg.sender);
-        SolvencyLib.deallocateExcess(mmId, marketId);
+    function _receiveBack(
+        address account,
+        uint256 marketId,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
+        // H_k += amount  via tilt
+        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+
+        // If this made the account "over-collateralised" we can free some capital
+        SolvencyLib.deallocateExcess(account, marketId);
     }
 
-    function receiveLayToken(uint256 mmId, uint256 marketId, uint256 positionId, uint256 amount) internal {
+    function _receiveLay(
+        address account,
+        uint256 marketId,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        s.layOffset[mmId][marketId] += int256(amount);
-        HeapLib.updateTilt(mmId, marketId, positionId, -int128(uint128(amount)));
-        TokenOpsLib.burnToken(marketId, positionId, false, amount, msg.sender);
-        SolvencyLib.deallocateExcess(mmId, marketId);
+
+        // Lay received: layOffset += amount, tilt -= amount
+        s.layOffset[account][marketId] += int256(amount);
+        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+
+        // Again, receiving exposure can relax the tightest constraint
+        SolvencyLib.deallocateExcess(account, marketId);
     }
 
-    function emitBack(uint256 mmId, uint256 marketId, uint256 positionId, uint256 amount, address to) internal {
-        HeapLib.updateTilt(mmId, marketId, positionId, -int128(uint128(amount)));
-        TokenOpsLib.mintToken(marketId, positionId, true, amount, to);
-        SolvencyLib.ensureSolvency(mmId, marketId);
+    function _emitBack(
+        address account,
+        uint256 marketId,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
+        // Sending Back: H_k -= amount via tilt
+        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+
+        // Check we are still solvent after lowering H_k
+        SolvencyLib.ensureSolvency(account, marketId);
     }
 
-    function emitLay(uint256 mmId, uint256 marketId, uint256 positionId, uint256 amount, address to) internal {
+    function _emitLay(
+        address account,
+        uint256 marketId,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        s.layOffset[mmId][marketId] -= int256(amount);
-        HeapLib.updateTilt(mmId, marketId, positionId, int128(uint128(amount)));
-        TokenOpsLib.mintToken(marketId, positionId, false, amount, to);
-        SolvencyLib.ensureSolvency(mmId, marketId);
+
+        // Sending Lay: layOffset -= amount, tilt += amount
+        s.layOffset[account][marketId] -= int256(amount);
+        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+
+        // Check we remain solvent after changing offsets
+        SolvencyLib.ensureSolvency(account, marketId);
     }
 
-    function processBuy(
+    /*//////////////////////////////////////////////////////////////
+                        HIGH-LEVEL TRANSFER HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Internal Back transfer: from -> to, same market/position.
+    /// @dev Caller (ledger) is responsible for checking token balances etc.
+    function transferBack(
+        address from,
         address to,
         uint256 marketId,
-        uint256 mmId,
         uint256 positionId,
-        bool isBack,
-        uint256 usdcIn,
-        uint256 tokensOut,
-        uint256 minUSDCDeposited,
-        bool usePermit2,
-        bytes calldata permitBlob
-    )
-        internal
-        returns (uint256 recordedUSDC, uint256 freeCollateral, int256 allocatedCapital, int128 newTilt)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.mmIdToAddress[mmId] == msg.sender, "Invalid MMId");
+        uint256 amount
+    ) internal {
+        require(amount > 0, "zero amount");
         require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
-
-        if (usdcIn > 0) {
-            if (usePermit2) {
-                recordedUSDC = DepositWithdrawLib.depositFromTraderWithPermit2(
-                    mmId, to, usdcIn, minUSDCDeposited, permitBlob
-                );
-            } else {
-                TypesPermit.EIP2612Permit memory p = abi.decode(permitBlob, (TypesPermit.EIP2612Permit));
-                recordedUSDC = DepositWithdrawLib.depositFromTraderWithEIP2612(
-                    mmId, to, usdcIn, minUSDCDeposited, p
-                );
-            }
-        } else {
-            recordedUSDC = 0;
+        if (from != address(0)) {
+            _emitBack(from, marketId, positionId, amount);
         }
-
-        if (isBack) {
-            emitBack(mmId, marketId, positionId, tokensOut, to);
-        } else {
-            emitLay(mmId, marketId, positionId, tokensOut, to);
+        if (to != address(0)) {
+            _receiveBack(to, marketId, positionId, amount);
         }
-
-        (freeCollateral, allocatedCapital, newTilt) = LedgerLib.getPositionLiquidity(mmId, marketId, positionId);
     }
 
-    function processSell(
+    /// @notice Internal Lay transfer: from -> to, same market/position.
+    function transferLay(
+        address from,
         address to,
         uint256 marketId,
-        uint256 mmId,
         uint256 positionId,
-        bool isBack,
-        uint256 tokensIn,
-        uint256 usdcOut
-    )
-        internal
-        returns (uint256 freeCollateral, int256 allocatedCapital, int128 newTilt)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.mmIdToAddress[mmId] == msg.sender, "Invalid MMId");
+        uint256 amount
+    ) internal {
+        require(amount > 0, "zero amount");
         require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
+        if (from != address(0)) {
+            _emitLay(from, marketId, positionId, amount);
+        }
+        if (to != address(0)) {
+            _receiveLay(to, marketId, positionId, amount);
+        }
+    }
 
-        // Burn incoming tokens and update tilt/capital
+    /*//////////////////////////////////////////////////////////////
+                       GENERIC POSITION TRANSFER SWITCH
+    //////////////////////////////////////////////////////////////*/
+
+    function transferPosition(
+        address from,
+        address to,
+        uint256 marketId,
+        uint256 positionId,
+        bool isBack,
+        uint256 amount
+    ) internal {
         if (isBack) {
-            receiveBackToken(mmId, marketId, positionId, tokensIn);
+            transferBack(from, to, marketId, positionId, amount);
         } else {
-            receiveLayToken(mmId, marketId, positionId, tokensIn);
+            transferLay(from, to, marketId, positionId, amount);
         }
-
-        // Pay the trader directly from Aave via the ledger
-        if (usdcOut > 0) {
-            DepositWithdrawLib.withdrawTo(mmId, usdcOut, to);
-        }
-
-        (freeCollateral, allocatedCapital, newTilt) = LedgerLib.getPositionLiquidity(mmId, marketId, positionId);
     }
 }

@@ -3,18 +3,19 @@
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
+import "./freeCollateralLib.sol";
 
 library AllocateCapitalLib {
-    function allocate(uint256 mmId, uint256 marketId, uint256 amount) internal {
+    function allocate(address account, uint256 marketId, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[mmId] >= amount, "Insufficient free collateral");
+        require(s.freeCollateral[account] >= amount, "Insufficient free collateral");
         
-        // reduce the amount of free capital the mmId has
-        s.freeCollateral[mmId] -= amount;
-        s.totalFreeCollateral -= amount;
+        // reduce the amount of free capital the account has
+        FreeCollateralEventsLib.decreaseFreeCollateralWithEvent(account, amount)
+
         
         // allocate that to this marketId in terms of USDC spent
-        s.USDCSpent[mmId][marketId] += amount;
+        s.USDCSpent[account][marketId] += amount;
         s.MarketUSDCSpent[marketId] += amount;
 
         // increase the value of the market appropriately
@@ -22,17 +23,16 @@ library AllocateCapitalLib {
         s.TotalMarketsValue += amount;  
     }
 
-    function deallocate(uint256 mmId, uint256 marketId, uint256 amount) internal {
+    function deallocate(address account, uint256 marketId, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[mmId] + amount <= type(uint256).max, "Free collateral overflow");
+        require(s.freeCollateral[account] + amount <= type(uint256).max, "Free collateral overflow");
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
-        // increase the amount of free capital the mmId has
-        s.freeCollateral[mmId] += amount;
-        s.totalFreeCollateral += amount;
+        // increase the amount of free capital the account has
+        FreeCollateralEventsLib.increaseFreeCollateralWithEvent(account, amount)
 
         // increase the amount of redemptions made
-        s.redeemedUSDC[mmId][marketId] += amount;
+        s.redeemedUSDC[account][marketId] += amount;
         s.Redemptions[marketId] += amount;
 
         //dececrease the value of the market appropriately 

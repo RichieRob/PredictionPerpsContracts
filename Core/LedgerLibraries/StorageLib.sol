@@ -10,6 +10,11 @@ interface IAavePool {
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
 }
 
+interface IPpUSDCEvents {
+    function externalMint(address to, uint256 amount) external;
+    function externalBurn(address from, uint256 amount) external;
+}
+
 library StorageLib {
     struct Storage {
         // Core tokens/protocols
@@ -17,30 +22,30 @@ library StorageLib {
         IERC20 aUSDC;
         IAavePool aavePool;
         address owner;
+        IERC20 ppUSDC;
 
-        // MM registry
-        mapping(uint256 => address) mmIdToAddress;
-        uint256 nextMMId;
+
 
         // --- Collateral & Accounting ---
 
 
-        // Invariants (per mmId, per marketId):
+        // Invariants (per account, per marketId):
         //
-        // netUSDCAllocation(mmId, marketId) = USDCSpent[mmId][marketId]
-        //                                   - redeemedUSDC[mmId][marketId]
+        // netUSDCAllocation(account, marketId) = USDCSpent[account][marketId]
+        //                                   - redeemedUSDC[account][marketId]
         //
         // For any operation, we maintain:
         //   - USDCSpent and redeemedUSDC are MONOTONE increasing (never decrease).
-        //   - freeCollateral[mmId] >= 0 at all times.
+        //   - freeCollateral[account] >= 0 at all times.
         //   - where H_k are the available shares the market maker has for position k
-        //   - H_k = freeCollateral[mmId]
-        //          + netUSDCAllocation(mmId, marketId)
-        //          + layOffset[mmId][marketId]
-        //          + tilt[mmId][marketId][k]
-        //     and we enforce min_k H_k >= 0 via the heap (min-tilt) logic.
+        //   - realminShares =
+        //          + netUSDCAllocation(account, marketId)
+        //          + layOffset[account][marketId]
+        //          + tilt[account][marketId][k]
+        //     and we enforce min_k realMinShares >= 0 via the heap (min-tilt) logic.
 
-        //   - For the designated DMM in a market with ISC, effective H_k also includes syntheticCollateral[marketId]
+        //   - For the designated DMM in a market with ISC, effective min shares is
+        // effective minshares = realminshares + syntheticCollateral[marketId]
         //     in solvency checks (see SolvencyLib / Synthetic Liquidity docs).
 
 
@@ -60,20 +65,20 @@ library StorageLib {
         
         // Free collateral (per MM): unallocated USDC available to a marketmaker for new trades or withdrawl.
         // Increased on deposit, decreased on allocation. Mirrors totalFreeCollateral but specific to market maker.
-        mapping(uint256 => uint256) freeCollateral; // mmId => amount
+        mapping(address => uint256) freeCollateral; // account => amount
 
         // Cumulative USDC this MM has ever allocated into this market.
         // Monotone increasing; never decreased.
-        mapping(uint256 => mapping(uint256 => uint256)) USDCSpent; // mmId => marketId => total allocated
+        mapping(address => mapping(uint256 => uint256)) USDCSpent; // account => marketId => total allocated
 
         // Cumulative USDC this MM has ever deallocated / redeemed *from* this market.
         // Monotone increasing; never decreased.
-        mapping(uint256 => mapping(uint256 => uint256)) redeemedUSDC; // mmId => marketId => total deallocated
+        mapping(address => mapping(uint256 => uint256)) redeemedUSDC; // account => marketId => total deallocated
 
         // Yes this one makes sesne we are just increasing this up and down instead of touching all the individual tilts
         // Net Lay token flow for each MM in each market.
         // Positive = more Lay received than issued; negative = more Lay issued than received.
-        mapping(uint256 => mapping(uint256 => int256)) layOffset; // mmId => marketId => int256
+        mapping(address => mapping(uint256 => int256)) layOffset; // account => marketId => int256
 
         
         // Total real USDC ever allocated into each market (sum of all MMs).
@@ -97,7 +102,7 @@ library StorageLib {
         // Invariant: TotalMarketsValue = Σ_m marketValue[m].
         uint256 TotalMarketsValue;
 
-        // Global free collateral across all MMs (Σ freeCollateral[mmId]).
+        // Global free collateral across all MMs (Σ freeCollateral[account]).
         // Increases on deposits and deallocations, decreases on allocations and withdrawals.
         
         uint256 totalFreeCollateral;
@@ -107,23 +112,23 @@ library StorageLib {
         uint256 totalValueLocked;
 
         //tilt
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => int128))) tilt; // mmId => marketId => positionId
+        mapping(address => mapping(uint256 => mapping(uint256 => int256))) tilt; // account => marketId => positionId
 
         // Min-heap over block minima (for solvency).
-        // For each (mmId, marketId):
+        // For each (account, marketId):
         //   - positions are grouped into blocks of 16, each BlockData stores:
         //       minId  = positionId with smallest tilt in block
         //       minVal = that smallest tilt
-        //   - mintTopHeap[mmId][marketId][0] indexes the block with GLOBAL min tilt.
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) minHeapIndex; // mmId => marketId => blockId => index+1 (0 = not present)        
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) minBlockData; // mmId => marketId => blockId => {minId, minVal}
-        mapping(uint256 => mapping(uint256 => uint256[])) minTopHeap; // mmId => marketId => heap array
+        //   - mintTopHeap[account][marketId][0] indexes the block with GLOBAL min tilt.
+        mapping(address => mapping(uint256 => mapping(uint256 => uint256))) minHeapIndex; // account => marketId => blockId => index+1 (0 = not present)        
+        mapping(address => mapping(uint256 => mapping(uint256 => Types.BlockData))) minBlockData; // account => marketId => blockId => {minId, minVal}
+        mapping(address => mapping(uint256 => uint256[])) minTopHeap; // account => marketId => heap array
 
         // Max-heap over block maxima (for redemption constraint when ISC is active).
         // Mirrors the min-heap structure, but tracking max tilt per block.
-        mapping(uint256 => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockDataMax; // mmId => marketId => blockId => {maxId, maxVal}
-        mapping(uint256 => mapping(uint256 => uint256[])) topHeapMax; // mmId => marketId => heap array
-        mapping(uint256 => mapping(uint256 => uint256)) heapIndexMax; // mmId => marketId => blockId => index+1 (0 = not present)
+        mapping(address => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockDataMax; // account => marketId => blockId => {maxId, maxVal}
+        mapping(address => mapping(uint256 => uint256[])) topHeapMax; // account => marketId => heap array
+        mapping(address => mapping(uint256 => uint256)) heapIndexMax; // account => marketId => blockId => index+1 (0 = not present)
 
 
 
@@ -141,17 +146,17 @@ library StorageLib {
         //
         // Invariants:
         //   - If syntheticCollateral[marketId] > 0:
-        //       * marketToDMM[marketId] is the ONLY mmId allowed to draw ISC.
+        //       * marketToDMM[marketId] is the ONLY account allowed to draw ISC.
         //       * allowedDMMs[marketToDMM[marketId]] == true.
         //   - syntheticCollateral[marketId] is set once at market creation and never mutated.
         //   - ISC is never transferred or withdrawn; it only appears virtually in solvency checks.
-        mapping(uint256 => uint256) marketToDMM; // marketId => mmId (immutable)
+        mapping(uint256 => address) marketToDMM; // marketId => account (immutable)
         mapping(uint256 => uint256) syntheticCollateral; // marketId => ISC amount (immutable)
         mapping(uint256 => bool) isExpanding; // allows additional positions for expanding markets, ensures MMs solvent in "Other" position
 
         
         //allowed DMM mapping
-        mapping(uint256 => bool) allowedDMMs; // mmId => is allowed as DMM
+        mapping(address => bool) allowedDMMs; // account => is allowed as DMM
 
         // Protocol fee configuration.
         // Invariants:
@@ -167,6 +172,9 @@ library StorageLib {
         bytes32 position = keccak256("MarketMakerLedger.storage");
         assembly { s.slot := position }
     }
+
+  
+
 
     function encodeTokenId(uint64 marketId, uint64 positionId, bool isBack) internal pure returns (uint256) {
         return (uint256(marketId) << 64) | (uint256(positionId) << 1) | (isBack ? 1 : 0);

@@ -28,12 +28,14 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     ppUSDC = await PpUSDC.deploy();
     await ppUSDC.waitForDeployment();
 
-    const MarketMakerLedger = await ethers.getContractFactory("MarketMakerLedger");
+    const MarketMakerLedger = await ethers.getContractFactory(
+      "MarketMakerLedger"
+    );
     ledger = await MarketMakerLedger.deploy(
       await usdc.getAddress(),
       await aUSDC.getAddress(),
       await aavePool.getAddress(),
-      ethers.ZeroAddress,          // permit2 unused
+      ethers.ZeroAddress, // permit2 unused
       await ppUSDC.getAddress()
     );
     await ledger.waitForDeployment();
@@ -41,7 +43,9 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     await ppUSDC.setLedger(await ledger.getAddress());
 
     // 🔹 Deploy flat market maker
-    const FlatMockMarketMaker = await ethers.getContractFactory("FlatMockMarketMaker");
+    const FlatMockMarketMaker = await ethers.getContractFactory(
+      "FlatMockMarketMaker"
+    );
     flatMM = await FlatMockMarketMaker.deploy();
     await flatMM.waitForDeployment();
 
@@ -61,11 +65,7 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     marketId = markets[0];
 
     // create ONE position
-    const tx = await ledger.createPosition(
-      marketId,
-      "YES",
-      "YES"
-    );
+    const tx = await ledger.createPosition(marketId, "YES", "YES");
     await tx.wait();
 
     const posIds = await ledger.getMarketPositions(marketId);
@@ -77,7 +77,9 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
 
     // mint & approve
     await usdc.mint(trader.address, TRADER_DEPOSIT);
-    await usdc.connect(trader).approve(await ledger.getAddress(), TRADER_DEPOSIT);
+    await usdc
+      .connect(trader)
+      .approve(await ledger.getAddress(), TRADER_DEPOSIT);
 
     // deposit with mode=0 (allowance)
     const emptyPermit = {
@@ -92,20 +94,20 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
       trader.address,
       TRADER_DEPOSIT,
       0,
-      0,           // mode = 0 (allowance)
+      0, // mode = 0 (allowance)
       emptyPermit, // unused for mode 0
       "0x"
     );
 
     // now try an internal ppUSDC trade:
-    const TOKENS_TO_BUY = ethers.parseUnits("10", 6);   // 10 tokens
-    const MAX_USDC_IN   = ethers.parseUnits("1000", 6); // up to 1000 USDC
+    const TOKENS_TO_BUY = ethers.parseUnits("10", 6); // 10 tokens
+    const MAX_USDC_IN = ethers.parseUnits("1000", 6); // up to 1000 USDC
 
     await ledger.connect(trader).buyExactTokens(
-      await flatMM.getAddress(),  // 👈 actual MM contract
+      await flatMM.getAddress(), // 👈 actual MM contract
       marketId,
       positionId,
-      true,                 // isBack
+      true, // isBack
       TOKENS_TO_BUY,
       MAX_USDC_IN
     );
@@ -114,11 +116,67 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     const free = await ledger.freeCollateralOf(trader.address);
     expect(free).to.be.lt(TRADER_DEPOSIT);
 
-    const [freeC, exposure, tilt] = await ledger.getPositionLiquidity(
-      trader.address,
-      marketId,
-      positionId
-    );
-    // console.log({ freeC: freeC.toString(), exposure: exposure.toString(), tilt: tilt.toString() });
+    // Just make sure the view doesn’t revert
+    await ledger.getPositionLiquidity(trader.address, marketId, positionId);
   });
+
+  it("maintains ISC line + DMM solvency invariants after a buy", async () => {
+    const TRADER_DEPOSIT = ethers.parseUnits("1000", 6); // 1,000 USDC
+    const TOKENS_TO_BUY  = ethers.parseUnits("10", 6);
+    const MAX_USDC_IN    = ethers.parseUnits("1000", 6);
+  
+    // --- 1) Fund trader + deposit into ledger ---
+    await usdc.mint(trader.address, TRADER_DEPOSIT);
+    await usdc
+      .connect(trader)
+      .approve(await ledger.getAddress(), TRADER_DEPOSIT);
+  
+    await ledger.connect(trader).deposit(
+      trader.address,
+      TRADER_DEPOSIT,
+      0, // minUSDCDeposited
+      0, // mode = 0 (allowance)
+      {
+        value: 0,
+        deadline: 0,
+        v: 0,
+        r: ethers.ZeroHash,
+        s: ethers.ZeroHash,
+      },
+      "0x"
+    );
+  
+    // --- 2) Execute a buy against the DMM (flat market maker) ---
+    await ledger.connect(trader).buyExactTokens(
+      await flatMM.getAddress(),
+      marketId,
+      positionId,
+      true, // isBack
+      TOKENS_TO_BUY,
+      MAX_USDC_IN
+    );
+  
+    // --- 3) Basic sanity: trader lost some freeCollateral ---
+    const traderFree = await ledger.freeCollateralOf(trader.address);
+    expect(traderFree).to.be.lt(TRADER_DEPOSIT);
+  
+    // --- 4) ISC invariant: used ISC within the line ---
+    const [usedISC, iscLine] = await ledger.invariant_iscWithinLine(marketId);
+  
+    // you set this to 100k in beforeEach: parseUnits("100000", 6)
+    expect(iscLine).to.equal(ethers.parseUnits("100000", 6));
+  
+    // core invariant: cannot overdraw the line
+    expect(usedISC).to.be.gte(0n);
+    expect(usedISC).to.be.lte(iscLine);
+  
+    // --- 5) DMM solvency after synthetic (effective min-shares ≥ 0) ---
+    const effMin = await ledger.invariant_effectiveMin(
+      await flatMM.getAddress(),
+      marketId
+    );
+  
+    expect(effMin).to.be.gte(0n);
+  });
+  
 });

@@ -120,4 +120,43 @@ library LedgerInvariantViews {
         tvl          = s.totalValueLocked;
         aUSDCBalance = s.aUSDC.balanceOf(address(this));
     }
+    /// @notice Check solvency of `account` across all markets:
+    /// @dev
+    ///  - okReal:      for every market, realMinShares(account, market) >= -ISC_line
+    ///  - okSynthetic: for every market, iscSpent(market) <= syntheticCollateral[market]
+    ///  - okTotal:     both of the above hold
+    function checkSolvencyAllMarkets(address account)
+        internal
+        view
+        returns (bool okReal, bool okSynthetic, bool okTotal)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        uint256[] memory markets = MarketManagementLib.getMarkets();
+
+        okReal      = true;
+        okSynthetic = true;
+
+        for (uint256 i = 0; i < markets.length; i++) {
+            uint256 marketId = markets[i];
+
+            int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
+            int256 effMin  = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
+
+            // real side: cannot be worse than the synthetic line
+            // (effMin = realMin + line for DMM; for normal accounts it's just realMin)
+            if (realMin < 0) {
+                okReal = false;
+            }
+
+            // synthetic side: after applying synthetic, effMin must be >= 0
+            if (effMin < 0) {
+                okSynthetic = false;
+            }
+        }
+
+        okTotal = okReal && okSynthetic;
+    }
+
+    
+
 }

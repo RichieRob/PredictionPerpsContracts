@@ -685,6 +685,15 @@ function invariant_systemBalance()
     return LedgerInvariantViews.systemBalance();
 }
 
+    function invariant_checkSolvencyAllMarkets(address account)
+        external
+        view
+        returns (bool okReal, bool okSynthetic, bool okTotal)
+    {
+        return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+    }
+
+
 
 
 }

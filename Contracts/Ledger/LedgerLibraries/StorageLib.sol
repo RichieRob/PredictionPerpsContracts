@@ -128,7 +128,7 @@ library StorageLib {
         // Mirrors the min-heap structure, but tracking max tilt per block.
         mapping(address => mapping(uint256 => mapping(uint256 => Types.BlockData))) blockDataMax; // account => marketId => blockId => {maxId, maxVal}
         mapping(address => mapping(uint256 => uint256[])) topHeapMax; // account => marketId => heap array
-        mapping(address => mapping(uint256 => uint256)) heapIndexMax; // account => marketId => blockId => index+1 (0 = not present)
+        mapping(address => mapping(uint256 => mapping(uint256 => uint256))) heapIndexMax; // account => marketId => blockId => index+1 (0 = not present)
 
 
 

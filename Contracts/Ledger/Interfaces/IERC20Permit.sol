@@ -1,5 +1,9 @@
-// IERC20Permit.sol
+
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
+
+// IERC20Permit.sol
+
 
 interface IERC20Permit {
     function permit(

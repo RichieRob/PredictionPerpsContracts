@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./FreeCollateralLib.sol";
 import "./PositionTransferLib.sol";
-import "../../Interfaces/IMarketMaker.sol";
+import "../Interfaces/IMarketMaker.sol";
 
 library TradeExecutionLib {
 

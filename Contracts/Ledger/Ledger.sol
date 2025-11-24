@@ -4,7 +4,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../Interfaces/ILedger.sol";
+import "./Interfaces/ILedger.sol";
 import "./LedgerLibraries/StorageLib.sol";
 import "./LedgerLibraries/DepositWithdrawLib.sol";
 import "./LedgerLibraries/SolvencyLib.sol";
@@ -19,11 +19,14 @@ import "./PositionERC20.sol";
 import "./LedgerLibraries/TradeRouterLib.sol";
 import "./LedgerLibraries/Types.sol";
 import "./LedgerLibraries/IntentLib.sol";
+import "./LedgerLibraries/ERC20BridgeLib.sol"; 
+import "./LedgerLibraries/TypesPermit.sol";
 
 
 
 
-using LedgerInvariantViews for *;
+
+
 
 contract MarketMakerLedger {
     using HeapLib for *;
@@ -70,26 +73,29 @@ contract MarketMakerLedger {
         marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount);
     }
 
-    function createPosition(
+function createPosition(
     uint256 marketId,
     string memory name,
     string memory ticker
-    )
+)
     external
     onlyOwner
     returns (uint256 positionId, address token)
-    {
+{
     (positionId, token) = MarketManagementLib.createPosition(
         marketId,
         name,
         ticker
     );
-    }
+
+    // Wire the cloned ERC20 to this market/position
+    ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
+}
 
 
     function createPositions(
     uint256 marketId,
-    PositionMeta[] memory positions
+    Types.PositionMeta[] memory positions
     ) external onlyOwner returns (uint256[] memory positionIds) {
     require(positions.length > 0, "No positions provided");
 
@@ -495,7 +501,7 @@ function totalFreeCollateral() external view returns (uint256) {
 
 function ppUSDCTransfer(address from, address to, uint256 amount) external {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    require(msg.sender == s.ppUSDC, "Only ppUSDC");
+    require(msg.sender == address(s.ppUSDC), "Only ppUSDC");
 
     // ↓ bookkeeping: move freeCollateral between accounts
     require(s.freeCollateral[from] >= amount, "Insufficient ppUSDC");

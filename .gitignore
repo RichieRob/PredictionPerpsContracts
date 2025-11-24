@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn.lock
+package-lock.json
+
+# Hardhat
+artifacts/
+cache/
+coverage/
+
+# Environment
+.env
+.env.*
+
+# Typechain (if you ever enable it)
+typechain-types/
+
+
+
+typechain/
+
+coverage.json

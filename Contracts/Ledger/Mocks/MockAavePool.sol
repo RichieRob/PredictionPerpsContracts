@@ -34,7 +34,7 @@ contract MockAavePool {
         address asset,
         uint256 amount,
         address onBehalfOf,
-        uint16 /*referralCode*/
+        uint16 referralCode    
     ) external {
         require(asset == underlying, "MockAavePool: wrong asset");
         require(onBehalfOf != address(0), "MockAavePool: onBehalfOf zero");

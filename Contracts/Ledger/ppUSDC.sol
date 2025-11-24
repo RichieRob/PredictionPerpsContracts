@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./ILedgerPpUSDCBridge.sol";
+import "./Interfaces/ILedgerPpUSDCBridge.sol";
 
 contract PpUSDC is ERC20 {
     address public owner;
@@ -20,11 +20,13 @@ contract PpUSDC is ERC20 {
         _;
     }
 
-    function setLedger(address _ledger) external onlyOwner {
-        require(ledger == address(0), "ledger already set");
-        require(_ledger != address(0), "ledger = 0");
-        ledger = _ledger;
-    }
+function setLedger(address newLedger) external onlyOwner {
+    require(ledger == address(0), "ledger already set");
+    require(newLedger != address(0), "ledger = 0");
+    ledger = newLedger;
+}
+
+
 
     modifier onlyLedger() {
         require(msg.sender == ledger, "Not ledger");
@@ -50,18 +52,41 @@ contract PpUSDC is ERC20 {
 
     /// @dev Override ERC20 internal transfer to delegate to the ledger.
     ///      Allowances remain handled by the base ERC20 implementation.
-    function _transfer(
-        address from,
-        address to,
-        uint256 amount
-    ) internal override {
-        require(from != address(0), "transfer from zero");
+     function transfer(address to, uint256 amount)
+        public
+        override
+        returns (bool)
+    {
+        address from = _msgSender();
         require(to != address(0), "transfer to zero");
 
         _ledger().ppUSDCTransfer(from, to, amount);
 
-        // Emit ERC20 event for wallets / indexers
+        // emit standard ERC20 event (balances are ledger-driven)
         emit Transfer(from, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        override
+        returns (bool)
+    {
+        address spender = _msgSender();
+        require(from != address(0), "transfer from zero");
+        require(to != address(0), "transfer to zero");
+
+        uint256 currentAllowance = allowance(from, spender);
+        require(currentAllowance >= amount, "ERC20: insufficient allowance");
+        unchecked {
+            _approve(from, spender, currentAllowance - amount);
+        }
+
+        _ledger().ppUSDCTransfer(from, to, amount);
+
+        // emit standard ERC20 event
+        emit Transfer(from, to, amount);
+        return true;
     }
 
     // --- Called BY ledger when it conceptually mints/burns freeCollateral ---

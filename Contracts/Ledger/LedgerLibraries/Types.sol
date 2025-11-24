@@ -19,8 +19,13 @@ library Types {
         bool   isBack;
     }
 
-        // 🆕 Trade kinds for routing
-    enum TradeKind {
+        struct PositionMeta {
+        string name;
+        string ticker;
+        }
+
+    
+        enum TradeKind {
         BUY_EXACT_TOKENS,
         BUY_FOR_USDC,
         SELL_EXACT_TOKENS,

@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 
 import { PRBMathSD59x18 } from "@prb/math/PRBMathSD59x18.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../Interfaces/ILedger.sol";
+import "./Interfaces/ILedger.sol";
 import "./AMMLibraries/LMSRMathLib.sol";
 import "./AMMLibraries/LMSRQuoteLib.sol";
 import "./AMMLibraries/LMSRUpdateLib.sol";

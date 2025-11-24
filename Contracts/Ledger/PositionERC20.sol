@@ -77,19 +77,46 @@ contract PositionERC20 is ERC20 {
         return IPositionLedgerMeta(ledger).erc20BalanceOf(address(this), account);
     }
 
-    // --- Transfers delegated to ledger ---
+   // --- Transfers delegated to ledger, no use of _transfer() ---
 
-    function _transfer(
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        address owner = _msgSender();
+        require(to != address(0), "zero addr");
+
+        // Ledger moves the real position
+        IPositionLedgerMeta(ledger).positionERC20Transfer(owner, to, amount);
+
+        // Single ERC20 Transfer event that matches ledger movement
+        // Note transfer events give incomplete history due to internal movements of balances in the ledger
+        emit Transfer(owner, to, amount);
+
+        return true;
+    }
+
+    function transferFrom(
         address from,
         address to,
         uint256 amount
-    ) internal override {
+    ) public override returns (bool) {
+        address spender = _msgSender();
         require(from != address(0) && to != address(0), "zero addr");
 
+        // Standard ERC20 allowance logic
+        uint256 currentAllowance = allowance(from, spender);
+        require(currentAllowance >= amount, "ERC20: insufficient allowance");
+        unchecked {
+            _approve(from, spender, currentAllowance - amount);
+        }
+
+        // Ledger moves the real position
         IPositionLedgerMeta(ledger).positionERC20Transfer(from, to, amount);
 
+        // Single ERC20 Transfer event that matches ledger movement
+        // Note transfer events give incomplete history due to internal movements of balances in the ledger
         emit Transfer(from, to, amount);
+
+        return true;
     }
 
-    // No mint / burn here; all creation / destruction is via ledger flows.
+    // No mint/burn here; creation/destruction is via ledger flows only.
 }

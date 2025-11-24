@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "./StorageLib.sol";
-import "../../Interfaces/IERC20Permit.sol";
-import "../../Interfaces/IPermit2.sol";
+import "../Interfaces/IERC20Permit.sol";
+import "../Interfaces/IPermit2.sol";
 import "./TypesPermit.sol";
 import "./FreeCollateralLib.sol";
 import "./ProtocolFeeLib.sol";

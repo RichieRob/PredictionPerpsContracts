@@ -9,6 +9,14 @@ import "./MarketManagementLib.sol";
 /// and its key is s.minBlockData[account][marketId][blockId].val or s.blockDataMax[...].val.
 /// We maintain the heaps when a block's extremum value changes.
 library HeapLib {
+
+    struct HeapContext {
+        address account;
+        uint256 marketId;
+        HeapType heapType;
+    }
+
+    
     enum HeapType { MIN, MAX }
 
     /*//////////////////////////////////////////////////////////////
@@ -164,7 +172,9 @@ library HeapLib {
         indexMap[account][marketId][blockId] = idx + 1;
     }
 
-    function _place(
+    
+
+function _place(
         StorageLib.Storage storage s,
         uint256[] storage heap,
         address account,
@@ -177,72 +187,64 @@ library HeapLib {
         _setIndex(s, account, marketId, blockId, idx, heapType);
     }
 
-    /// @dev Bubble the node with (blockId, val) upward; returns final index.
-    function _bubbleUp(
+   /// @dev Bubble the node upward
+function _bubbleUp(
+        StorageLib.Storage storage s,
         uint256[] storage heap,
+        HeapContext memory ctx,     // only cheap data
         uint256 index,
         uint256 blockId,
-        int256  val,
-        address account,
-        uint256 marketId,
-        HeapType heapType
+        int256 val
     ) private returns (uint256) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
         while (index > 0) {
-            uint256 parent    = (index - 1) / 4;
-            int256  parentVal = _getBlockVal(s, account, marketId, heap[parent], heapType);
-            bool    swap      =
-                (heapType == HeapType.MIN)
-                    ? (parentVal > val)
-                    : (parentVal < val);
+            uint256 parent = (index - 1) / 4;
+            uint256 parentBlockId = heap[parent];
+            int256 parentVal = _getBlockVal(s, ctx.account, ctx.marketId, parentBlockId, ctx.heapType);
 
-            if (!swap) break;
+            bool shouldSwap = ctx.heapType == HeapType.MIN
+                ? parentVal > val
+                : parentVal < val;
 
-            // move parent down one level and fix its index
-            _place(s, heap, account, marketId, index, heap[parent], heapType);
+            if (!shouldSwap) break;
+
+            _place(s, heap, ctx.account, ctx.marketId, index, parentBlockId, ctx.heapType);
             index = parent;
         }
-        _place(s, heap, account, marketId, index, blockId, heapType);
+        _place(s, heap, ctx.account, ctx.marketId, index, blockId, ctx.heapType);
         return index;
     }
 
-    /// @dev Bubble the node with (blockId, val) downward; returns final index.
-    function _bubbleDown(
+  function _bubbleDown(
+        StorageLib.Storage storage s,
         uint256[] storage heap,
+        HeapContext memory ctx,
         uint256 index,
         uint256 blockId,
-        int256  val,
-        address account,
-        uint256 marketId,
-        HeapType heapType
+        int256 val
     ) private returns (uint256) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
         while (true) {
-            uint256 extremumChild    = index;
-            int256  extremumChildVal = val; // current node's value
+            uint256 best = index;
+            int256 bestVal = val;
 
-            // 4-ary children: 4*index + 1 .. 4*index + 4
             for (uint256 i = 1; i <= 4; i++) {
                 uint256 child = index * 4 + i;
                 if (child >= heap.length) break;
-                int256 childVal = _getBlockVal(s, account, marketId, heap[child], heapType);
-                bool better =
-                    (heapType == HeapType.MIN)
-                        ? (childVal < extremumChildVal)
-                        : (childVal > extremumChildVal);
 
-                if (better) {
-                    extremumChild    = child;
-                    extremumChildVal = childVal;
+                int256 childVal = _getBlockVal(s, ctx.account, ctx.marketId, heap[child], ctx.heapType);
+
+                if ((ctx.heapType == HeapType.MIN && childVal < bestVal) ||
+                    (ctx.heapType == HeapType.MAX && childVal > bestVal)) {
+                    best = child;
+                    bestVal = childVal;
                 }
             }
-            if (extremumChild == index) break;
 
-            // move extremum child up
-            _place(s, heap, account, marketId, index, heap[extremumChild], heapType);
-            index = extremumChild;
+            if (best == index) break;
+
+            _place(s, heap, ctx.account, ctx.marketId, index, heap[best], ctx.heapType);
+            index = best;
         }
-        _place(s, heap, account, marketId, index, blockId, heapType);
+        _place(s, heap, ctx.account, ctx.marketId, index, blockId, ctx.heapType);
         return index;
     }
 
@@ -269,27 +271,32 @@ library HeapLib {
         HeapType heapType
     ) private {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256[] storage heap =
-            (heapType == HeapType.MIN)
-                ? s.minTopHeap[account][marketId]
-                : s.topHeapMax[account][marketId];
+
+        uint256[] storage heap = heapType == HeapType.MIN
+            ? s.minTopHeap[account][marketId]
+            : s.topHeapMax[account][marketId];
 
         int256 newVal = _getBlockVal(s, account, marketId, blockId, heapType);
+
+        HeapContext memory ctx = HeapContext({
+            account: account,
+            marketId: marketId,
+            heapType: heapType
+        });
 
         (bool found, uint256 idx) = _getIndex(s, account, marketId, blockId, heapType);
 
         if (!found) {
-            // Insert: append placeholder, then bubble up the new node.
-            heap.push(); // increase length
-            uint256 newIdx = heap.length - 1;
-            _bubbleUp(heap, newIdx, blockId, newVal, account, marketId, heapType);
+            // insert
+            uint256 newIdx = heap.length;
+            heap.push();
+            _bubbleUp(s, heap, ctx, newIdx, blockId, newVal);
             return;
         }
 
-        // Update: node exists at idx; its key changed to newVal.
-        // Try moving up; if it didn't move, try moving down.
-        idx = _bubbleUp(heap, idx, blockId, newVal, account, marketId, heapType);
-        _bubbleDown(heap, idx, blockId, newVal, account, marketId, heapType);
+        // update existing
+        idx = _bubbleUp(s, heap, ctx, idx, blockId, newVal);
+        _bubbleDown(s, heap, ctx, idx, blockId, newVal);
     }
 
     /*//////////////////////////////////////////////////////////////

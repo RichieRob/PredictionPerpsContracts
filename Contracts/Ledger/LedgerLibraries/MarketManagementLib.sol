@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "./StorageLib.sol";
 import "./Types.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
-import "./ERC20BridgeLib.sol"; // 👈 add this
 
 
 
@@ -72,8 +71,7 @@ library MarketManagementLib {
 
         token = impl.clone(); // EIP-1167 minimal proxy
 
-        // 4. Register with ERC20 mapping (Back-only)
-        ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
+  
 
         emit PositionCreated(marketId, positionId, token, name, ticker);
     }

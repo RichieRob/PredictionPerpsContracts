@@ -14,7 +14,8 @@ library LedgerInvariantViews {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Compare stored marketValue vs (MarketUSDCSpent - Redemptions).
-    /// @dev Invariant target: marketValue == MarketUSDCSpent - Redemptions.
+    /// @dev Target invariant:
+    ///      marketValue[marketId] == MarketUSDCSpent[marketId] - Redemptions[marketId].
     function marketAccounting(uint256 marketId)
         internal
         view
@@ -30,7 +31,7 @@ library LedgerInvariantViews {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Effective minimum available shares for account in marketId.
-    /// @dev effMin = realMinShares + syntheticCollateral (for DMM).
+    /// @dev effMin = realMinShares + syntheticCollateral (for DMM only).
     function effectiveMinShares(address account, uint256 marketId)
         internal
         view
@@ -38,22 +39,21 @@ library LedgerInvariantViews {
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
         int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
-        effMin = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
+        effMin         = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
     }
 
     /*//////////////////////////////////////////////////////////////
                       3. SYNTHETIC USAGE (ISC SPENT)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Conceptual "ISC needed" for this market: how far below zero the DMM's
+    /// @notice Conceptual "ISC usage" for this market: how far below zero the DMM's
     ///         real min-shares would be without any synthetic collateral.
     /// @dev
     ///   realMinShares = netUSDCAllocation + layOffset + minTilt
     ///   iscSpent      = max(0, -realMinShares)
     ///
-    ///   This is intentionally *not* clamped by syntheticCollateral[marketId]:
-    ///   if iscSpent > syntheticCollateral, that indicates an invariant breach,
-    ///   which tests / off-chain checks should surface.
+    ///   If iscSpent > syntheticCollateral[marketId], tests should flag
+    ///   an invariant breach.
     function iscSpent(uint256 marketId) internal view returns (uint256) {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
@@ -76,24 +76,48 @@ library LedgerInvariantViews {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         5. TOKEN-SIDE HELPERS
+                        5. SYSTEM BALANCE SHEET
     //////////////////////////////////////////////////////////////*/
 
-   
+    /// @notice Compare total principal booked on the ledger vs
+    ///         "markets + freeCollateral".
+    /// @dev Target invariant:
+    ///      TotalMarketsValue + totalFreeCollateral == totalValueLocked.
+    function systemBalance()
+        internal
+        view
+        returns (uint256 lhs, uint256 rhs)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        lhs = s.TotalMarketsValue + s.totalFreeCollateral;
+        rhs = s.totalValueLocked;
+    }
 
     /*//////////////////////////////////////////////////////////////
-                 9. TVL vs aUSDC BALANCE
+                 6. TVL vs aUSDC BALANCE (MOCK vs PROD)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Compare totalValueLocked against aUSDC balance held by the ledger.
-    /// @dev Invariant target: tvl == aUSDC.balanceOf(address(this)).
+    /// @notice Compare totalValueLocked (principal) against aUSDC balance.
+    ///
+    /// @dev
+    ///   - In **tests with a mock aUSDC that does NOT accrue interest**,
+    ///     you usually want to assert:
+    ///         aUSDCBalance == tvl
+    ///
+    ///   - In **production with real Aave**:
+    ///       aUSDCBalance >= tvl
+    ///     and the difference is:
+    ///       interest = aUSDCBalance - tvl
+    ///
+    ///   This function just exposes both sides; tests decide whether they
+    ///   are checking equality (mock) or >= (prod semantics).
     function tvlAccounting()
         internal
         view
         returns (uint256 tvl, uint256 aUSDCBalance)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        tvl           = s.totalValueLocked; // or recompute as TotalMarketsValue + totalFreeCollateral
-        aUSDCBalance  = s.aUSDC.balanceOf(address(this));
+        tvl          = s.totalValueLocked;
+        aUSDCBalance = s.aUSDC.balanceOf(address(this));
     }
 }

@@ -671,5 +671,14 @@ function invariant_tvl()
     return LedgerInvariantViews.tvlAccounting();
 }
 
+function invariant_systemBalance()
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.systemBalance();
+}
+
+
 
 }

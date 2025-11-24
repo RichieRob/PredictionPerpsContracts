@@ -56,6 +56,7 @@ library TradeExecutionLib {
     //////////////////////////////////////////////////////////////*/
 
     function buyExactTokens(
+        address trader,
         address mm,
         uint256 marketId,
         uint256 positionId,
@@ -64,7 +65,6 @@ library TradeExecutionLib {
         uint256 maxUSDCIn
     ) internal {
         require(t > 0, "t=0");
-        address trader = msg.sender;
 
         uint256 usdcIn = IMarketMaker(mm).applyBuyExactTokens(
             marketId,
@@ -86,6 +86,7 @@ library TradeExecutionLib {
     }
 
     function buyForUSDC(
+        address trader,
         address mm,
         uint256 marketId,
         uint256 positionId,
@@ -94,7 +95,6 @@ library TradeExecutionLib {
         uint256 minTokensOut
     ) internal {
         require(usdcIn > 0, "usdcIn=0");
-        address trader = msg.sender;
 
         uint256 tokensOut = IMarketMaker(mm).applyBuyForUSDC(
             marketId,
@@ -116,6 +116,7 @@ library TradeExecutionLib {
     }
 
     function sellExactTokens(
+        address trader,
         address mm,
         uint256 marketId,
         uint256 positionId,
@@ -124,7 +125,6 @@ library TradeExecutionLib {
         uint256 minUSDCOut
     ) internal {
         require(t > 0, "t=0");
-        address trader = msg.sender;
 
         uint256 usdcOut = IMarketMaker(mm).applySellExactTokens(
             marketId,
@@ -146,6 +146,7 @@ library TradeExecutionLib {
     }
 
     function sellForUSDC(
+        address trader,
         address mm,
         uint256 marketId,
         uint256 positionId,
@@ -154,7 +155,6 @@ library TradeExecutionLib {
         uint256 maxTokensIn
     ) internal {
         require(usdcOut > 0, "usdcOut=0");
-        address trader = msg.sender;
 
         uint256 tokensIn = IMarketMaker(mm).applySellForUSDC(
             marketId,

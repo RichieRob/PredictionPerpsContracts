@@ -190,6 +190,11 @@ mapping(address => uint256) erc20PositionId;  // token => positionId
 
 
 
+// 🆕 Intent nonces (sequential, per trader)
+mapping(address => uint256) nextIntentNonce;
+
+
+
 
     }
 
@@ -197,5 +202,5 @@ mapping(address => uint256) erc20PositionId;  // token => positionId
         bytes32 position = keccak256("MarketMakerLedger.storage");
         assembly { s.slot := position }
     }
-    
+
 }

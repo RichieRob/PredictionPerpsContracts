@@ -16,6 +16,11 @@ import "./LedgerLibraries/TradeExecutionLib.sol";
 import "./LedgerLibraries/ProtocolFeeLib.sol";
 import "./LedgerLibraries/LedgerInvariantViews.sol";
 import "./PositionERC20.sol";
+import "./LedgerLibraries/TradeRouterLib.sol";
+import "./LedgerLibraries/Types.sol";
+import "./LedgerLibraries/IntentLib.sol";
+
+
 
 
 using LedgerInvariantViews for *;
@@ -34,6 +39,8 @@ contract MarketMakerLedger {
     event MarketMakerRegistered(address indexed mmAddress, address account);
     event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
     event DMMAllowed(address indexed account, bool allowed);
+    event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
+
 
 
 
@@ -153,81 +160,91 @@ function erc20BalanceOf(address token, address account) external view returns (u
 
    // --- trading entrypoints using and updating internal ppUSDC---
 
-    function buyExactTokens(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 t,
-        uint256 maxUSDCIn
-    ) external {
-        TradeExecutionLib.buyExactTokens(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            t,
-            maxUSDCIn
-        );
-    }
 
-    function buyForppUSDC(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 usdcIn,
-        uint256 minTokensOut
-    ) external {
-        TradeExecutionLib.buyForUSDC(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            usdcIn,
-            minTokensOut
-        );
-    }
+function buyExactTokens(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 t,
+    uint256 maxUSDCIn
+) external {
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_EXACT_TOKENS,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        t,
+        maxUSDCIn
+    );
+}
 
-    function sellExactTokens(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 t,
-        uint256 minUSDCOut
-    ) external {
-        TradeExecutionLib.sellExactTokens(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            t,
-            minUSDCOut
-        );
-    }
+function buyForppUSDC(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 usdcIn,
+    uint256 minTokensOut
+) external {
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_FOR_USDC,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        usdcIn,
+        minTokensOut
+    );
+}
 
-    function sellForppUSDC(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 usdcOut,
-        uint256 maxTokensIn
-    ) external {
-        TradeExecutionLib.sellForUSDC(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            usdcOut,
-            maxTokensIn
-        );
-    }
+function sellExactTokens(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 t,
+    uint256 minUSDCOut
+) external {
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_EXACT_TOKENS,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        t,
+        minUSDCOut
+    );
+}
 
-   // --- trading entrypoints using and updating USDC directly---
+function sellForppUSDC(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 usdcOut,
+    uint256 maxTokensIn
+) external {
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_FOR_USDC,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        usdcOut,
+        maxTokensIn
+    );
+}
 
-    function buyExactTokensWithUSDC(
+
+  // --- trading entrypoints using and updating USDC directly---
+
+function buyExactTokensWithUSDC(
     address mm,
     uint256 marketId,
     uint256 positionId,
@@ -251,15 +268,16 @@ function erc20BalanceOf(address token, address account) external view returns (u
         permit2Calldata
     );
 
-    // 2) Use `recorded` as the actual budget seen by the MM.
-    //    This guarantees freeCollateral >= usdcIn that TradeExecutionLib will burn.
-    TradeExecutionLib.buyExactTokens(
+    // 2) Route via router (uses recorded as maxUSDCIn)
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_EXACT_TOKENS,
+        msg.sender,
         mm,
         marketId,
         positionId,
         isBack,
-        t,
-        recorded       // maxUSDCIn for the MM
+        t,          // primaryAmount = tokens
+        recorded    // bound = maxUSDCIn
     );
 }
 
@@ -287,93 +305,97 @@ function buyForUSDCWithUSDC(
         permit2Calldata
     );
 
-    // 2) Trade using whatever actually got credited (`recorded`)
-    TradeExecutionLib.buyForUSDC(
+    // 2) Route via router (recorded is actual usdcIn)
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_FOR_USDC,
+        msg.sender,
         mm,
         marketId,
         positionId,
         isBack,
-        recorded,       // usdcIn as seen by MM / ledger
-        minTokensOut
+        recorded,      // primaryAmount = usdcIn
+        minTokensOut   // bound = minTokensOut
     );
 }
 
-    /// @notice Sell exact `t` tokens and withdraw the USDC proceeds to `to`.
-    function sellExactTokensForUSDCToWallet(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 t,
-        uint256 minUSDCOut,
-        address to
-    ) external {
-        require(t > 0, "t=0");
-        require(to != address(0), "to=0");
+/// @notice Sell exact `t` tokens and withdraw the USDC proceeds to `to`.
+function sellExactTokensForUSDCToWallet(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 t,
+    uint256 minUSDCOut,
+    address to
+) external {
+    require(t > 0, "t=0");
+    require(to != address(0), "to=0");
 
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256 beforeFree = s.freeCollateral[msg.sender];
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    uint256 beforeFree = s.freeCollateral[msg.sender];
 
-        // 1) Normal internal sell → credits freeCollateral (ppUSDC)
-        TradeExecutionLib.sellExactTokens(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            t,
-            minUSDCOut
-        );
+    // 1) Internal sell → credits freeCollateral (ppUSDC) via router
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_EXACT_TOKENS,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        t,           // primaryAmount = tokens
+        minUSDCOut   // bound = minUSDCOut
+    );
 
-        // 2) Work out how much this trade just credited
-        uint256 afterFree = s.freeCollateral[msg.sender];
-        require(afterFree >= beforeFree, "freeCollateral underflow");
-        uint256 delta = afterFree - beforeFree;
-        require(delta > 0, "no proceeds");
+    // 2) Work out how much this trade just credited
+    uint256 afterFree = s.freeCollateral[msg.sender];
+    require(afterFree >= beforeFree, "freeCollateral underflow");
+    uint256 delta = afterFree - beforeFree;
+    require(delta > 0, "no proceeds");
 
-        // 3) Withdraw only that delta as real USDC to `to`
-        DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
-        emit Withdrawn(msg.sender, delta);
-    }
+    // 3) Withdraw only that delta as real USDC to `to`
+    DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
+    emit Withdrawn(msg.sender, delta);
+}
 
-    /// @notice Sell however many tokens are needed to get exactly `usdcOut`
-    ///         and withdraw that USDC directly to `to`.
-    function sellForUSDCToWallet(
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 usdcOut,
-        uint256 maxTokensIn,
-        address to
-    ) external {
-        require(usdcOut > 0, "usdcOut=0");
-        require(to != address(0), "to=0");
+/// @notice Sell however many tokens are needed to get exactly `usdcOut`
+///         and withdraw that USDC directly to `to`.
+function sellForUSDCToWallet(
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 usdcOut,
+    uint256 maxTokensIn,
+    address to
+) external {
+    require(usdcOut > 0, "usdcOut=0");
+    require(to != address(0), "to=0");
 
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256 beforeFree = s.freeCollateral[msg.sender];
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    uint256 beforeFree = s.freeCollateral[msg.sender];
 
-        // 1) Normal internal sell → credits freeCollateral (ppUSDC)
-        TradeExecutionLib.sellForUSDC(
-            mm,
-            marketId,
-            positionId,
-            isBack,
-            usdcOut,
-            maxTokensIn
-        );
+    // 1) Internal sell → credits freeCollateral (ppUSDC) via router
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_FOR_USDC,
+        msg.sender,
+        mm,
+        marketId,
+        positionId,
+        isBack,
+        usdcOut,      // primaryAmount = usdcOut
+        maxTokensIn   // bound = maxTokensIn
+    );
 
-        // 2) Work out how much this trade just credited
-        uint256 afterFree = s.freeCollateral[msg.sender];
-        require(afterFree >= beforeFree, "freeCollateral underflow");
-        uint256 delta = afterFree - beforeFree;
-        // Optional sanity check: delta should be == usdcOut in normal flow
-        require(delta > 0, "no proceeds");
+    // 2) Work out how much this trade just credited
+    uint256 afterFree = s.freeCollateral[msg.sender];
+    require(afterFree >= beforeFree, "freeCollateral underflow");
+    uint256 delta = afterFree - beforeFree;
+    require(delta > 0, "no proceeds");
 
-        // 3) Withdraw only that delta as real USDC to `to`
-        DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
-        emit Withdrawn(msg.sender, delta);
-    }
-
+    // 3) Withdraw only that delta as real USDC to `to`
+    DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
+    emit Withdrawn(msg.sender, delta);
+}
 
 
     // --- views / misc ---
@@ -553,6 +575,53 @@ function erc20Symbol(uint256 marketId, uint256 positionId)
 }
 
 
+function getNextIntentNonce(address trader) external view returns (uint256) {
+    return StorageLib.getStorage().nextIntentNonce[trader];
+}
+
+function fillIntent(
+    Types.Intent calldata intent,
+    bytes calldata signature
+) external {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+
+    require(intent.trader != address(0), "trader=0");
+    require(block.timestamp <= intent.deadline, "intent expired");
+
+    // Nonce: strictly sequential per trader (simplest replay protection)
+    uint256 expected = s.nextIntentNonce[intent.trader];
+    require(intent.nonce == expected, "bad nonce");
+    s.nextIntentNonce[intent.trader] = expected + 1;
+
+    // Signature must be from trader
+    address signer = IntentLib.recoverSigner(intent, signature);
+    require(signer == intent.trader, "bad sig");
+
+    // Route the trade, using trader's ppUSDC/freeCollateral
+    TradeRouterLib.tradeWithPPUSDC(
+        intent.kind,
+        intent.trader,        // 👈 explicit trader
+        msg.sender,
+        intent.marketId,
+        intent.positionId,
+        intent.isBack,
+        intent.primaryAmount,
+        intent.bound
+    );
+
+    emit IntentFilled(
+        msg.sender,           // relayer / filler
+        intent.trader,
+        intent.marketId,
+        intent.positionId,
+        intent.kind,
+        intent.isBack,
+        intent.primaryAmount,
+        intent.bound
+    );
+}
+
+
 
 
 
@@ -593,10 +662,6 @@ function invariant_systemFunding(uint256 marketId)
 {
     return LedgerInvariantViews.totalFullSets(marketId);
 }
-
-
-
-
 
 function invariant_tvl()
     external

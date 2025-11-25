@@ -20,7 +20,7 @@ library TradeExecutionLib {
         uint256 usdcIn,
         uint256 tokensOut
     ) internal {
-        FreeCollateralLib.decreaseFreeCollateralWithEvent(trader, usdcIn);
+        // 1) Position delta first
         PositionTransferLib.transferPosition(
             mm,
             trader,
@@ -29,6 +29,9 @@ library TradeExecutionLib {
             isBack,
             tokensOut
         );
+
+        // 2) Net cash settlement: trader pays mm (ppUSDC move only)
+        FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
     }
 
     function processSell(
@@ -40,6 +43,7 @@ library TradeExecutionLib {
         uint256 tokensIn,
         uint256 usdcOut
     ) internal {
+        // 1) Position delta first
         PositionTransferLib.transferPosition(
             trader,
             mm,
@@ -48,7 +52,9 @@ library TradeExecutionLib {
             isBack,
             tokensIn
         );
-        FreeCollateralLib.increaseFreeCollateralWithEvent(trader, usdcOut);
+
+        // 2) Net cash settlement: mm pays trader (ppUSDC move only)
+        FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -11,7 +11,7 @@ library AllocateCapitalLib {
         require(s.freeCollateral[account] >= amount, "Insufficient free collateral");
         
         // reduce the amount of free capital the account has
-        FreeCollateralLib.decreaseFreeCollateralWithEvent(account, amount);
+        FreeCollateralLib.burnPpUSDC(account, amount);
 
         
         // allocate that to this marketId in terms of USDC spent
@@ -28,7 +28,7 @@ library AllocateCapitalLib {
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
         // increase the amount of free capital the account has
-        FreeCollateralLib.increaseFreeCollateralWithEvent(account, amount);
+        FreeCollateralLib.mintPpUSDC(account, amount);
 
         // increase the amount of redemptions made
         s.redeemedUSDC[account][marketId] += amount;

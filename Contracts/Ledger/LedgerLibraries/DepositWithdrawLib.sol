@@ -52,7 +52,7 @@ library DepositWithdrawLib {
         require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
 
         // 4. Credit net collateral to `to` (and emit ppUSDC Mint event)
-        FreeCollateralLib.increaseFreeCollateralWithEvent(to, recordedAmount);
+        FreeCollateralLib.mintPpUSDC(to, recordedAmount);
 
         // 5. Track TVL principal
         s.totalValueLocked += recordedAmount;
@@ -186,7 +186,7 @@ library DepositWithdrawLib {
         require(to != address(0), "Invalid recipient");
 
         // This will revert internally if freeCollateral[account] < amount
-        FreeCollateralLib.decreaseFreeCollateralWithEvent(account, amount);
+        FreeCollateralLib.burnPpUSDC(account, amount);
         s.totalValueLocked -= amount;
 
         // Withdraw from Aave directly to recipient

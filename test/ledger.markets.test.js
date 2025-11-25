@@ -40,9 +40,8 @@ describe("MarketMakerLedger – markets & positions", function () {
     // wire ppUSDC -> ledger
     await ppUSDC.setLedger(await ledger.getAddress());
 
-        // 🔑 allow a dummy DMM
-        await ledger.allowDMM(dmm.address, true);
-
+    // 🔑 allow a dummy DMM
+    await ledger.allowDMM(dmm.address, true);
   });
 
   it("creates a market and stores name/ticker", async () => {
@@ -93,4 +92,76 @@ describe("MarketMakerLedger – markets & positions", function () {
     }
   });
 
+  it("wires ERC20 clones to ledger meta + balance views", async () => {
+    const iscAmount = 0;
+
+    // create market
+    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount);
+    const markets = await ledger.getMarkets();
+    const marketId = markets[0];
+
+    const teams = [
+      { name: "Arsenal", ticker: "ARS" },
+      { name: "Liverpool", ticker: "LIV" },
+      { name: "Manchester City", ticker: "MCI" },
+    ];
+
+    const created = [];
+    for (const t of teams) {
+      // 🔧 ethers v6: use staticCall on the function itself
+      const [positionId, token] = await ledger.createPosition.staticCall(
+        marketId,
+        t.name,
+        t.ticker
+      );
+
+      const tx = await ledger.createPosition(marketId, t.name, t.ticker);
+      await tx.wait();
+
+      created.push({ positionId, token, ...t });
+    }
+
+    // sanity: market positions list matches count
+    const positionIds = await ledger.getMarketPositions(marketId);
+    expect(positionIds.length).to.equal(teams.length);
+
+    for (let i = 0; i < created.length; i++) {
+      const { positionId, token, name, ticker } = created[i];
+
+      // ----- 1) check ERC20PositionMeta wiring -----
+      const [
+        registered,
+        mId,
+        pId,
+        posName,
+        posTicker,
+        marketName,
+        marketTicker,
+      ] = await ledger.getERC20PositionMeta(token);
+
+      expect(registered).to.equal(true);
+      expect(mId).to.equal(marketId);
+      expect(pId).to.equal(positionId);
+      expect(posName).to.equal(name);
+      expect(posTicker).to.equal(ticker);
+      expect(marketName).to.equal("Premier League Winner");
+      expect(marketTicker).to.equal("EPL24");
+
+      // ----- 2) check name / symbol helpers match meta -----
+      const erc20Name = await ledger.erc20Name(marketId, positionId);
+      const erc20Symbol = await ledger.erc20Symbol(marketId, positionId);
+
+      expect(erc20Name).to.equal(`${name} in Premier League Winner`);
+      expect(erc20Symbol).to.equal(`${ticker}-EPL24`);
+
+      // ----- 3) check supply / balances (no trades yet) -----
+      const totalSupply = await ledger.erc20TotalSupply(token);
+      const ownerBal = await ledger.erc20BalanceOf(token, owner.address);
+      const traderBal = await ledger.erc20BalanceOf(token, trader.address);
+
+      expect(totalSupply).to.equal(0n);
+      expect(ownerBal).to.equal(0n);
+      expect(traderBal).to.equal(0n);
+    }
+  });
 });

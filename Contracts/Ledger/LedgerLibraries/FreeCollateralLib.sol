@@ -24,7 +24,7 @@ library FreeCollateralLib {
 
     /// @notice Increase freeCollateral for an account and emit ppUSDC mint event.
     /// @dev Assumes caller has already decided this increase is valid.
-    function increaseFreeCollateralWithEvent(address account, uint256 amount) internal {
+    function mintPpUSDC(address account, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
         s.freeCollateral[account] += amount;
@@ -36,7 +36,7 @@ library FreeCollateralLib {
 
     /// @notice Decrease freeCollateral for an account and emit ppUSDC burn event.
     /// @dev Reverts if freeCollateral would underflow.
-    function decreaseFreeCollateralWithEvent(address account, uint256 amount) internal {
+    function burnPpUSDC(address account, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.freeCollateral[account] >= amount, "Insufficient free collateral");
 

@@ -178,5 +178,47 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
   
     expect(effMin).to.be.gte(0n);
   });
+
+  it("keeps TVL equal to aUSDC balance in the mock after deposit + withdraw", async () => {
+    const AMOUNT = ethers.parseUnits("1000", 6);
+
+    // --- 1) fund trader + deposit into ledger ---
+    await usdc.mint(trader.address, AMOUNT);
+    await usdc
+      .connect(trader)
+      .approve(await ledger.getAddress(), AMOUNT);
+
+    const emptyPermit = {
+      value: 0,
+      deadline: 0,
+      v: 0,
+      r: ethers.ZeroHash,
+      s: ethers.ZeroHash,
+    };
+
+    await ledger.connect(trader).deposit(
+      trader.address,
+      AMOUNT,
+      0,          // minUSDCDeposited
+      0,          // mode = 0 (allowance)
+      emptyPermit,
+      "0x"
+    );
+
+    // --- 2) Check TVL vs aUSDC after deposit ---
+    let tvl = await ledger.getTotalValueLocked();
+    let aBal = await aUSDC.balanceOf(await ledger.getAddress());
+    expect(aBal).to.equal(tvl);
+
+    // --- 3) Withdraw half back to trader ---
+    const HALF = AMOUNT / 2n;
+    await ledger.connect(trader).withdraw(HALF, trader.address);
+
+    // --- 4) Check TVL vs aUSDC after withdraw ---
+    tvl = await ledger.getTotalValueLocked();
+    aBal = await aUSDC.balanceOf(await ledger.getAddress());
+    expect(aBal).to.equal(tvl);
+  });
+
   
 });

@@ -51,7 +51,7 @@ interface ILedger {
     function transferLiquidity(address account, address newAddress) external;
     function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
         external view returns (uint256 freeCollateral, int256 marketExposure, int256 tilt);
-    function getFullAvailableShares(address account, uint256 marketId, uint256 positionId) external view returns (int256);
+    function getFullCapacityShares(address account, uint256 marketId, uint256 positionId) external view returns (int256);
     function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId);
     function getMarketValue(uint256 marketId) external view returns (uint256);
     function getTotalMarketsValue() external view returns (uint256);

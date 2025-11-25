@@ -44,7 +44,7 @@ library LedgerLib {
 
 
 
-function getFullAvailableShares(address account, uint256 marketId, uint256 positionId)
+function getFullCapacityShares(address account, uint256 marketId, uint256 positionId)
     internal
     view
     returns (int256)
@@ -57,7 +57,7 @@ function getFullAvailableShares(address account, uint256 marketId, uint256 posit
 }
 
 
-function getAllocatedAvailableShares(address account, uint256 marketId, uint256 positionId)
+function getCreatedShares(address account, uint256 marketId, uint256 positionId)
     internal
     view
     returns (int256)

@@ -17,17 +17,23 @@ library LedgerLib {
     internal
     view
     returns (
-        uint256 freeCollateral,
+        uint256 realFreeCollateral,
         int256  marketExposure,
-        int256  tilt
+        int256  tilt,
+        uint256 amountOfISCForThisAccountAndMarket
     )
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
+    
+    // adding the ISC to freeCollateral if the account is the DMM
+
     uint256 isc = MarketManagementLib.isDMM(account, marketId)
         ? s.syntheticCollateral[marketId]
         : 0;
+    
+    amountOfISCForThisAccountAndMarket = isc;
 
-    freeCollateral = s.freeCollateral[account] + isc;
+    realFreeCollateral = s.freeCollateral[account];
 
     int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
 
@@ -38,16 +44,33 @@ library LedgerLib {
 
 
 
-function getAvailableShares(address account, uint256 marketId, uint256 positionId)
+function getFullAvailableShares(address account, uint256 marketId, uint256 positionId)
     internal
     view
     returns (int256)
 {
-    (uint256 freeCollateral, int256 marketExposure, int256 tilt) =
+
+    (uint256 freeCollateral, int256 marketExposure, int256 tilt, uint256 isc) =
         getPositionLiquidity(account, marketId, positionId);
 
-    return int256(freeCollateral) + marketExposure + int256(tilt);
+    return int256(freeCollateral) + marketExposure + int256(tilt) + int256(isc);
 }
+
+
+function getAllocatedAvailableShares(address account, uint256 marketId, uint256 positionId)
+    internal
+    view
+    returns (int256)
+{
+    //ISC balance included in freeCollateral for DMM
+
+    ( , int256 marketExposure, int256 tilt, uint256 isc ) =
+        getPositionLiquidity(account, marketId, positionId);
+
+    return marketExposure + int256(tilt) + int256(isc);
+}
+
+
 
 
     function getMinTilt(address account, uint256 marketId) internal view returns (int256 minTilt, uint256 minPositionId) {

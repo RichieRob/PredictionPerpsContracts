@@ -108,7 +108,10 @@ library ERC20BridgeLib {
         uint256 marketId   = s.erc20MarketId[token];
         uint256 positionId = s.erc20PositionId[token];
 
-        int256 avail = LedgerLib.getAvailableShares(account, marketId, positionId);
+
+         //ISC balance included in getFullAvailableShares for DMM
+        int256 avail = LedgerLib.getAllocatedAvailableShares(account, marketId, positionId);
+
 
         if (avail <= 0) return 0;
         return uint256(avail);

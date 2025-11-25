@@ -411,19 +411,11 @@ function sellForUSDCToWallet(
 
     function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
         external view
-        returns (uint256 freeCollateral, int256 marketExposure, int256 tilt)
+        returns (uint256 freeCollateral, int256 marketExposure, int256 tilt, uint256 amountOfISCForThisAccountAndMarket)
     {
         return LedgerLib.getPositionLiquidity(account, marketId, positionId);
     }
 
-    function getAvailableShares(address account, uint256 marketId, uint256 positionId)
-        external view
-        returns (int256)
-    {
-        (uint256 freeCollateral, int256 marketExposure, int256 tilt) =
-            LedgerLib.getPositionLiquidity(account, marketId, positionId);
-        return int256(freeCollateral) + marketExposure + int256(tilt);
-    }
 
     function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId) {
         return LedgerLib.getMinTilt(account, marketId);

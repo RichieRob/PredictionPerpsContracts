@@ -8,6 +8,28 @@ import "./MarketManagementLib.sol";
 import "./SolvencyLib.sol";
 
 
+// There are two distinct "share" notions:
+//
+// 1. Full capacity shares (getFullCapacityShares)
+//    - realFreeCollateral  (convertible into new full sets)
+//    - + ISC (if DMM)
+//    - + marketExposure
+//    - + tilt
+//    → This represents the *maximum number of shares* the account could
+//      possibly support/sell on this position if it allocated all resources.
+//
+// 2. Created shares (getCreatedShares)
+//    - ISC (if DMM)
+//    - + marketExposure
+//    - + tilt
+//    → This represents the number of shares that actually *exist* for
+//      this account on this outcome.
+//    → This is the number used for the ERC20 mirror (balanceOf/totalSupply).
+//    → It is simply “full capacity shares minus the part backed by realFreeCollateral”.
+
+
+
+
 library LedgerLib {
     function getPositionLiquidity(
     address account,

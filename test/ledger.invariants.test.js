@@ -50,7 +50,7 @@ describe("MarketMakerLedger – invariants after a trade", function () {
     // wire ppUSDC -> ledger
     await ppUSDC.setLedger(await ledger.getAddress());
 
-    // allow a dummy DMM
+    // allow DMM
     await ledger.allowDMM(await flatMM.getAddress(), true);
 
     // --- create market + one position with an ISC line ---
@@ -74,10 +74,10 @@ describe("MarketMakerLedger – invariants after a trade", function () {
     positionId = posIds[0];
   });
 
-  it("keeps market accounting, system balance and TVL invariants after a buy", async () => {
+  it("keeps market accounting, system balance, TVL, ISC line and redeemability invariants after a buy", async () => {
     const TRADER_DEPOSIT = ethers.parseUnits("1000", 6);
-    const TOKENS_TO_BUY = ethers.parseUnits("10", 6);
-    const MAX_USDC_IN = ethers.parseUnits("1000", 6);
+    const TOKENS_TO_BUY  = ethers.parseUnits("10", 6);
+    const MAX_USDC_IN    = ethers.parseUnits("1000", 6);
 
     // --- 1) fund trader + deposit ---
     await usdc.mint(trader.address, TRADER_DEPOSIT);
@@ -133,8 +133,46 @@ describe("MarketMakerLedger – invariants after a trade", function () {
     const [tvlAfter, aUSDCAfter] = await ledger.invariant_tvl();
     expect(aUSDCAfter).to.equal(tvlAfter);
 
-    // and TVL should still be the original deposit, as we just moved
-    // principal between freeCollateral and marketValue.
+    // and TVL should still be the original deposit: we only moved principal
+    // between freeCollateral and marketValue.
     expect(tvlAfter).to.equal(TRADER_DEPOSIT);
+
+    // --- 6) ISC invariant: used ISC within the line ---
+    const [usedISC, iscLine] = await ledger.invariant_iscWithinLine(marketId);
+    expect(iscLine).to.equal(ethers.parseUnits("100000", 6));
+    expect(usedISC).to.be.gte(0n);
+    expect(usedISC).to.be.lte(iscLine);
+
+    // --- 7) DMM solvency: effective min-shares >= 0 ---
+    const effMinDMM = await ledger.invariant_effectiveMin(
+      await flatMM.getAddress(),
+      marketId
+    );
+    expect(effMinDMM).to.be.gte(0n);
+
+    // --- 8) DMM redeemability: netAlloc >= redeemable ---
+    const [netAllocDMM, redeemableDMM, marginDMM] =
+      await ledger.invariant_redeemabilityState(
+        await flatMM.getAddress(),
+        marketId
+      );
+
+    // margin = netAlloc - redeemable should never be negative
+    expect(marginDMM).to.be.gte(0n);
+    if (redeemableDMM > 0n) {
+      expect(netAllocDMM).to.be.gte(redeemableDMM);
+    }
+
+    // --- 9) Trader redeemability: netAlloc >= redeemable ---
+    const [netAllocTrader, redeemableTrader, marginTrader] =
+      await ledger.invariant_redeemabilityState(
+        trader.address,
+        marketId
+      );
+
+    expect(marginTrader).to.be.gte(0n);
+    if (redeemableTrader > 0n) {
+      expect(netAllocTrader).to.be.gte(redeemableTrader);
+    }
   });
 });

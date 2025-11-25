@@ -668,15 +668,20 @@ function invariant_systemBalance()
     return LedgerInvariantViews.systemBalance();
 }
 
-    function invariant_checkSolvencyAllMarkets(address account)
-        external
-        view
-        returns (bool okReal, bool okSynthetic, bool okTotal)
-    {
-        return LedgerInvariantViews.checkSolvencyAllMarkets(account);
-    }
+function invariant_checkSolvencyAllMarkets(address account)
+    external
+    view
+    returns (bool ok)
+{
+    return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+}
 
-
-
+function invariant_redeemabilityState(address account, uint256 marketId)
+    external
+    view
+    returns (int256 netAlloc, int256 redeemable, int256 margin)
+{
+    return LedgerInvariantViews.redeemabilityState( account, marketId);
+}
 
 }

@@ -120,42 +120,44 @@ library LedgerInvariantViews {
         tvl          = s.totalValueLocked;
         aUSDCBalance = s.aUSDC.balanceOf(address(this));
     }
-    /// @notice Check solvency of `account` across all markets:
-    /// @dev
-    ///  - okReal:      for every market, realMinShares(account, market) >= -ISC_line
-    ///  - okSynthetic: for every market, iscSpent(market) <= syntheticCollateral[market]
-    ///  - okTotal:     both of the above hold
-    function checkSolvencyAllMarkets(address account)
-        internal
-        view
-        returns (bool okReal, bool okSynthetic, bool okTotal)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256[] memory markets = MarketManagementLib.getMarkets();
+/// @dev Returns false if in any market this account has effMin < 0.
+///      (Redeemability is checked separately via redeemabilityState).
 
-        okReal      = true;
-        okSynthetic = true;
+  function checkSolvencyAllMarkets(address account)
+    internal
+    view
+    returns (bool ok)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    uint256[] memory markets = MarketManagementLib.getMarkets();
 
-        for (uint256 i = 0; i < markets.length; i++) {
-            uint256 marketId = markets[i];
+    ok = true;
 
-            int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
-            int256 effMin  = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
+    for (uint256 i = 0; i < markets.length; i++) {
+        uint256 marketId = markets[i];
 
-            // real side: cannot be worse than the synthetic line
-            // (effMin = realMin + line for DMM; for normal accounts it's just realMin)
-            if (realMin < 0) {
-                okReal = false;
-            }
+        int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
+        int256 effMin  = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
 
-            // synthetic side: after applying synthetic, effMin must be >= 0
-            if (effMin < 0) {
-                okSynthetic = false;
-            }
+        if (effMin < 0) {
+            ok = false;
+            break;
         }
-
-        okTotal = okReal && okSynthetic;
     }
+}
+
+function redeemabilityState(address account, uint256 marketId)
+    internal
+    view
+    returns (int256 netAlloc, int256 redeemable, int256 margin)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    netAlloc    = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
+    redeemable  = SolvencyLib.computeRedeemable(s, account, marketId);
+    margin      = netAlloc - redeemable; // should be >= 0
+}
+
+
 
     
 

@@ -3,6 +3,52 @@ pragma solidity ^0.8.20;
 
 import "./Types.sol";
 
+
+// we make sure that the intent to sell 20 lay for 5 USDC is the same as the intent to buy 20 back for $15
+
+/**
+ * @title IntentLib — EIP-712 hashing for "buy-only" intents
+ *
+ * @notice
+ *  The protocol executes ONLY "buy" semantics on-chain.
+ *  There is no such thing as an on-chain "sell" intent.
+ *
+ *  Frontend / off-chain matching MUST transform every user action
+ *  into one of the two canonical intent forms:
+ *
+ *      - BUY_EXACT_TOKENS   (buy N tokens, price floats)
+ *      - BUY_FOR_USDC       (spend up to X USDC, tokens float)
+ *
+ *  This requires converting SELL actions into equivalent BUY actions:
+ *
+ *      • Selling BACK  (user gives BACK)  == Buying LAY  at price (1 - p)
+ *      • Selling LAY   (user gives LAY)   == Buying BACK at price (1 - p)
+ *
+ *  Where full-set price = 1.0 by definition (Back + Lay = 1 USDC).
+ *
+ *  Frontend responsibilities:
+ *    1. Detect if user clicked "Sell Back" or "Sell Lay".
+ *    2. Convert it into a "Buy" intent:
+ *          - Flip `isBack`
+ *          - Adjust price or bound:
+ *                p_buy_opposite = (1 - p_sell)
+ *          - Keep same token amount
+ *    3. Sign the EIP-712 intent using ONLY the BUY_* TradeKind values.
+ *
+ *  As a result:
+ *      "Sell 20 Lay for 5 USDC"  becomes  "Buy 20 Back for 15 USDC".
+ *      "Sell 20 Back for 15 USDC" becomes "Buy 20 Lay for 5 USDC".
+ *
+ *  The ledger then processes all intents uniformly:
+ *      transferPosition(...) + transferFreeCollateral(...)
+ *
+ *  This keeps the on-chain logic minimal and symmetric while allowing
+ *  any expressive "sell" UX off-chain.
+ */
+
+
+
+
 library IntentLib {
     // EIP-712 domain + struct typehashes
     bytes32 internal constant EIP712_DOMAIN_TYPEHASH = keccak256(

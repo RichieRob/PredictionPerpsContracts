@@ -103,11 +103,14 @@ function createPosition(
 
     positionIds = new uint256[](positions.length);
     for (uint256 i = 0; i < positions.length; i++) {
-        (uint256 positionId, ) = MarketManagementLib.createPosition(
+        (uint256 positionId, address token) = MarketManagementLib.createPosition(
             marketId,
             positions[i].name,
             positions[i].ticker
         );
+
+    // Wire the cloned ERC20 to this market/position
+    ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
         positionIds[i] = positionId;
      }
     }
@@ -382,7 +385,7 @@ function sellForUSDCToWallet(
     StorageLib.Storage storage s = StorageLib.getStorage();
     uint256 beforeFree = s.freeCollateral[msg.sender];
 
-    // 1) Internal sell → credits freeCollateral (ppUSDC) via router
+    // 1) Internal sell → credits freeCollateral (ppUSDC) via router.
     TradeRouterLib.tradeWithPPUSDC(
         Types.TradeKind.SELL_FOR_USDC,
         msg.sender,
@@ -390,20 +393,24 @@ function sellForUSDCToWallet(
         marketId,
         positionId,
         isBack,
-        usdcOut,      // primaryAmount = usdcOut
-        maxTokensIn   // bound = maxTokensIn
+        usdcOut,      // primaryAmount = target ppUSDC credit
+        maxTokensIn   // bound
     );
 
-    // 2) Work out how much this trade just credited
+    // 2) Compute net freeCollateral gained
     uint256 afterFree = s.freeCollateral[msg.sender];
     require(afterFree >= beforeFree, "freeCollateral underflow");
     uint256 delta = afterFree - beforeFree;
-    require(delta > 0, "no proceeds");
 
-    // 3) Withdraw only that delta as real USDC to `to`
-    DepositWithdrawLib.withdrawTo(msg.sender, delta, to);
-    emit Withdrawn(msg.sender, delta);
+    // 3) Enforce "all of usdcOut must be withdrawable"
+    require(delta >= usdcOut, "sellForUSDC: insufficient net proceeds");
+
+    // 4) Withdraw exactly usdcOut to wallet
+    DepositWithdrawLib.withdrawTo(msg.sender, usdcOut, to);
+    emit Withdrawn(msg.sender, usdcOut);
 }
+
+
 
 
     // --- views / misc ---

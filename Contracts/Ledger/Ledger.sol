@@ -21,6 +21,8 @@ import "./LedgerLibraries/Types.sol";
 import "./LedgerLibraries/IntentLib.sol";
 import "./LedgerLibraries/ERC20BridgeLib.sol"; 
 import "./LedgerLibraries/TypesPermit.sol";
+import "./LedgerLibraries/FillIntentLib.sol";
+
 
 
 
@@ -581,50 +583,31 @@ function erc20Symbol(uint256 marketId, uint256 positionId)
 }
 
 
-function getNextIntentNonce(address trader) external view returns (uint256) {
-    return StorageLib.getStorage().nextIntentNonce[trader];
+
+function cancelIntent(Types.Intent calldata intent) external {
+    // tx sender must be the trader
+    require(intent.trader == msg.sender, "not trader");
+    IntentLib.cancelIntent(intent);
 }
 
 function fillIntent(
     Types.Intent calldata intent,
-    bytes calldata signature
+    bytes calldata signature,
+    uint256 fillPrimary,  // tokens
+    uint256 fillQuote     // ppUSDC / USDC
 ) external {
-    StorageLib.Storage storage s = StorageLib.getStorage();
-
-    require(intent.trader != address(0), "trader=0");
-    require(block.timestamp <= intent.deadline, "intent expired");
-
-    // Nonce: strictly sequential per trader (simplest replay protection)
-    uint256 expected = s.nextIntentNonce[intent.trader];
-    require(intent.nonce == expected, "bad nonce");
-    s.nextIntentNonce[intent.trader] = expected + 1;
-
-    // Signature must be from trader
-    address signer = IntentLib.recoverSigner(intent, signature);
-    require(signer == intent.trader, "bad sig");
-
-    // Route the trade, using trader's ppUSDC/freeCollateral
-    TradeRouterLib.tradeWithPPUSDC(
-        intent.kind,
-        intent.trader,        // 👈 explicit trader
-        msg.sender,
-        intent.marketId,
-        intent.positionId,
-        intent.isBack,
-        intent.primaryAmount,
-        intent.bound
-    );
-
-    emit IntentFilled(
-        msg.sender,           // relayer / filler
-        intent.trader,
-        intent.marketId,
-        intent.positionId,
-        intent.kind,
-        intent.isBack,
-        intent.primaryAmount,
-        intent.bound
-    );
+    // Filler is msg.sender; FillIntentLib will use that.
+    FillIntentLib._fillIntent(intent, signature, fillPrimary, fillQuote);
+            emit IntentFilled(
+            msg.sender,
+            intent.trader,
+            intent.marketId,
+            intent.positionId,
+            intent.kind,
+            intent.isBack,
+            fillPrimary,
+            fillQuote
+        );
 }
 
 

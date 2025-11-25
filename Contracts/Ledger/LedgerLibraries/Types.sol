@@ -26,7 +26,9 @@ library Types {
 
     enum TradeKind {
     BUY_EXACT_TOKENS,
-    BUY_FOR_USDC
+    BUY_FOR_USDC,
+    SELL_EXACT_TOKENS,
+    SELL_FOR_USDC
 }
 
 

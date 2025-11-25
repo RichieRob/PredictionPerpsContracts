@@ -16,6 +16,12 @@ interface IPpUSDCEvents {
 }
 
 library StorageLib {
+
+      struct IntentState {
+        uint256 filledPrimary; // how many tokens have been filled so far
+        bool    cancelled;     // explicit kill switch
+    }
+    
     struct Storage {
         // Core tokens/protocols
         IERC20 usdc;
@@ -190,8 +196,14 @@ mapping(address => uint256) erc20PositionId;  // token => positionId
 
 
 
-// 🆕 Intent nonces (sequential, per trader)
-mapping(address => uint256) nextIntentNonce;
+// in StorageLib.Storage:
+
+
+
+mapping(bytes32 => IntentState) intentStates;
+// key = IntentLib.hashIntent(intent)
+
+
 
 
 

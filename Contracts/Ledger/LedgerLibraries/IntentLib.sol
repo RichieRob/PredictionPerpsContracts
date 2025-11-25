@@ -2,16 +2,16 @@
 pragma solidity ^0.8.20;
 
 import "./Types.sol";
-
-
-// we make sure that the intent to sell 20 lay for 5 USDC is the same as the intent to buy 20 back for $15
+import "./StorageLib.sol";
 
 /**
  * @title IntentLib — EIP-712 hashing for "buy-only" intents
  *
  * @notice
- *  The protocol executes ONLY "buy" semantics on-chain.
- *  There is no such thing as an on-chain "sell" intent.
+ *  The protocol executes both "buy" and "sell" semantics on-chain.
+ *  
+ *  However on the front end and for order handling there will be no "sell" intents.
+ *  Instead "sell" intents will be submitted as "buy" intents.
  *
  *  Frontend / off-chain matching MUST transform every user action
  *  into one of the two canonical intent forms:
@@ -46,10 +46,16 @@ import "./Types.sol";
  *  any expressive "sell" UX off-chain.
  */
 
-
-
-
+ 
 library IntentLib {
+    event IntentCancelled(
+        address indexed trader,
+        uint256 indexed marketId,
+        uint256 indexed positionId,
+        uint256 nonce,
+        bytes32 intentHash
+    );
+
     // EIP-712 domain + struct typehashes
     bytes32 internal constant EIP712_DOMAIN_TYPEHASH = keccak256(
         "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
@@ -70,13 +76,8 @@ library IntentLib {
         ")"
     );
 
-    // Domain name / version (these are what the frontend must use)
     bytes32 internal constant NAME_HASH    = keccak256("PredictionPerps-Intents");
     bytes32 internal constant VERSION_HASH = keccak256("1");
-
-    // -------------------------
-    // Domain separator
-    // -------------------------
 
     function _domainSeparator() internal view returns (bytes32) {
         return keccak256(
@@ -85,14 +86,10 @@ library IntentLib {
                 NAME_HASH,
                 VERSION_HASH,
                 block.chainid,
-                address(this) // the ledger contract
+                address(this)
             )
         );
     }
-
-    // -------------------------
-    // Struct hash
-    // -------------------------
 
     function hashIntent(Types.Intent memory intent)
         internal
@@ -106,7 +103,7 @@ library IntentLib {
                 intent.marketId,
                 intent.positionId,
                 intent.isBack,
-                intent.kind,          // enum underlying type = uint8
+                intent.kind,
                 intent.primaryAmount,
                 intent.bound,
                 intent.nonce,
@@ -114,10 +111,6 @@ library IntentLib {
             )
         );
     }
-
-    // -------------------------
-    // Full EIP-712 digest
-    // -------------------------
 
     function digest(Types.Intent memory intent)
         internal
@@ -132,10 +125,6 @@ library IntentLib {
             )
         );
     }
-
-    // -------------------------
-    // Recover signer
-    // -------------------------
 
     function recoverSigner(
         Types.Intent memory intent,
@@ -154,5 +143,25 @@ library IntentLib {
         }
 
         return ecrecover(d, v, r, s);
+    }
+
+    function cancelIntent(Types.Intent calldata intent) internal {
+        require(intent.trader == msg.sender, "not trader");
+
+        bytes32 key = hashIntent(intent);
+
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        StorageLib.IntentState storage st = s.intentStates[key];
+
+        require(!st.cancelled, "already cancelled");
+        st.cancelled = true;
+
+        emit IntentCancelled(
+            msg.sender,
+            intent.marketId,
+            intent.positionId,
+            intent.nonce,
+            key
+        );
     }
 }

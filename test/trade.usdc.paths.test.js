@@ -2,6 +2,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { usdc, deployCore, EMPTY_PERMIT } = require("./helpers/core");
+const { expectCoreSystemInvariants } = require("./helpers/markets");
 
 describe("MarketMakerLedger – USDC trade paths", function () {
   let fx;   // { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger }
@@ -59,9 +60,9 @@ describe("MarketMakerLedger – USDC trade paths", function () {
   });
 
   async function getFirstMarketAndPositionIds() {
-    const markets   = await fx.ledger.getMarkets();
-    const marketId  = markets[0];
-    const positions = await fx.ledger.getMarketPositions(marketId);
+    const markets    = await fx.ledger.getMarkets();
+    const marketId   = markets[0];
+    const positions  = await fx.ledger.getMarketPositions(marketId);
     const positionId = positions[0]; // Outcome A
     return { marketId, positionId };
   }
@@ -89,37 +90,19 @@ describe("MarketMakerLedger – USDC trade paths", function () {
         usdc("1000"),        // maxUSDCFromWallet (more than enough)
         0,                   // mode = allowance
         EMPTY_PERMIT,
-        "0x"                 // permit2Calldata
+        "0x"
       );
 
     const afterWallet = await fx.usdc.balanceOf(fx.trader.address);
     expect(afterWallet).to.be.lt(beforeWallet); // spent something
 
-    // TVL vs aUSDC balance in the mock: must match exactly
-    const [tvl, aBal] = await fx.ledger.invariant_tvl();
-    expect(aBal).to.equal(tvl);
-
-    // System balance: TotalMarketsValue + totalFreeCollateral == totalValueLocked
-    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
-    expect(lhs).to.equal(rhs);
-
-    // Solvency holds for trader and mm address (the MM contract)
-    const okTrader = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      fx.trader.address
-    );
-    const okMM = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      await mm.getAddress()
-    );
-    expect(okTrader).to.equal(true);
-    expect(okMM).to.equal(true);
-
-    // Redeemability margin for mm should be >= 0
-    const [netAlloc, redeemable, margin] =
-      await fx.ledger.invariant_redeemabilityState(
-        await mm.getAddress(),
-        marketId
-      );
-    expect(margin).to.be.gte(0n);
+    // 🔨 hammer invariants via helper
+    const mmAddr = await mm.getAddress();
+    await expectCoreSystemInvariants(fx, {
+      accounts: [fx.trader.address, mmAddr],
+      marketId,
+      checkRedeemabilityFor: [mmAddr],
+    });
   });
 
   it("buyForUSDCWithUSDC path works and preserves invariants", async function () {
@@ -151,13 +134,12 @@ describe("MarketMakerLedger – USDC trade paths", function () {
     const afterWallet = await fx.usdc.balanceOf(fx.trader.address);
     expect(beforeWallet - afterWallet).to.equal(usdc("200"));
 
-    // TVL vs aUSDC balance
-    const [tvl, aBal] = await fx.ledger.invariant_tvl();
-    expect(aBal).to.equal(tvl);
-
-    // System balance invariant
-    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
-    expect(lhs).to.equal(rhs);
+    const mmAddr = await mm.getAddress();
+    await expectCoreSystemInvariants(fx, {
+      accounts: [fx.trader.address, mmAddr],
+      marketId,
+      checkRedeemabilityFor: [mmAddr],
+    });
   });
 
   it("sellExactTokensForUSDCToWallet credits wallet and keeps invariants", async function () {
@@ -211,21 +193,12 @@ describe("MarketMakerLedger – USDC trade paths", function () {
     const afterWallet = await fx.usdc.balanceOf(fx.trader.address);
     expect(afterWallet).to.be.gt(beforeWallet); // received some USDC proceeds
 
-    // TVL vs aUSDC: still consistent
-    const [tvl, aBal] = await fx.ledger.invariant_tvl();
-    expect(aBal).to.equal(tvl);
-
-    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
-    expect(lhs).to.equal(rhs);
-
-    const okTrader = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      fx.trader.address
-    );
-    const okMM = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      await mm.getAddress()
-    );
-    expect(okTrader).to.equal(true);
-    expect(okMM).to.equal(true);
+    const mmAddr = await mm.getAddress();
+    await expectCoreSystemInvariants(fx, {
+      accounts: [fx.trader.address, mmAddr],
+      marketId,
+      checkRedeemabilityFor: [mmAddr],
+    });
   });
 
   it("sellForUSDCToWallet withdraws exact USDC and keeps invariants", async function () {
@@ -282,11 +255,12 @@ describe("MarketMakerLedger – USDC trade paths", function () {
     // Wallet must gain exactly targetUSDCOut (contract guarantees this path)
     expect(afterWallet - beforeWallet).to.equal(targetUSDCOut);
 
-    const [tvl, aBal] = await fx.ledger.invariant_tvl();
-    expect(aBal).to.equal(tvl);
-
-    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
-    expect(lhs).to.equal(rhs);
+    const mmAddr = await mm.getAddress();
+    await expectCoreSystemInvariants(fx, {
+      accounts: [fx.trader.address, mmAddr],
+      marketId,
+      checkRedeemabilityFor: [mmAddr],
+    });
   });
 
   it("allows sell-for-USDC to wallet when DMM has backing capital and invariants remain satisfied", async function () {
@@ -362,27 +336,17 @@ describe("MarketMakerLedger – USDC trade paths", function () {
     // Wallet must gain exactly targetUSDCOut on this path
     expect(afterWallet - beforeWallet).to.equal(targetUSDCOut);
 
-    // Invariants still good
-    const [tvl, aBal] = await fx.ledger.invariant_tvl();
-    expect(aBal).to.equal(tvl);
+    // Invariants still good (core + redeemability for mm)
+    const mmAddr = await mm.getAddress();
+    await expectCoreSystemInvariants(fx, {
+      accounts: [fx.trader.address, mmAddr],
+      marketId,
+      checkRedeemabilityFor: [mmAddr],
+    });
 
-    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
-    expect(lhs).to.equal(rhs);
-
-    const okTrader = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      fx.trader.address
-    );
-    const okMM = await fx.ledger.invariant_checkSolvencyAllMarkets(
-      await mm.getAddress()
-    );
-    expect(okTrader).to.equal(true);
-    expect(okMM).to.equal(true);
-
-    const [netAlloc, redeemable, margin] =
-      await fx.ledger.invariant_redeemabilityState(
-        await mm.getAddress(),
-        marketId
-      );
+    // (Optional) extra explicit margin check for MM
+    const [, , margin] =
+      await fx.ledger.invariant_redeemabilityState(mmAddr, marketId);
     expect(margin).to.be.gte(0n);
   });
 });

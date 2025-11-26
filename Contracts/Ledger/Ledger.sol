@@ -78,6 +78,7 @@ contract MarketMakerLedger {
  
 
     // --- market / position management  ---
+    
     function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount, bool doesResolve, address oracle, bytes calldata oracleParams ) external onlyOwner returns (uint256 marketId) {
         marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount, doesResolve, oracle, oracleParams);
     }
@@ -639,7 +640,17 @@ function fillIntent(
 }
 
 
+function resolveMarket(uint256 marketId) external onlyOwner {
+ ResolutionLib.resolveFromOracle(marketId);
+ }
 
+ /// @notice Manually resolve a market to a winning position
+function resolveMarket(uint256 marketId, uint256 winningPositionId)
+    external
+    onlyOwner
+{
+    ResolutionLib._resolveMarketCore(marketId, winningPositionId);
+}
 
 
 

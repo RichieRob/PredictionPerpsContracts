@@ -8,7 +8,7 @@ import "./2_MarketManagementLib.sol";
 /// @notice Min-heap and max-heap over blocks (4-ary heap). Each heap node holds a blockId,
 /// and its key is s.minBlockData[account][marketId][blockId].val or s.blockDataMax[...].val.
 /// We maintain the heaps when a block's extremum value changes.
-library 3_HeapLib {
+library HeapLib {
 
     struct HeapContext {
         address account;
@@ -109,7 +109,7 @@ library 3_HeapLib {
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256 start        = blockId * Types.BLOCK_SIZE;
         uint256 endExclusive = start + Types.BLOCK_SIZE;
-        uint256[] memory positions = 2_MarketManagementLib.getMarketPositions(marketId);
+        uint256[] memory positions = MarketManagementLib.getMarketPositions(marketId);
         if (endExclusive > positions.length) endExclusive = positions.length;
 
         int256  extremumVal = (heapType == HeapType.MIN) ? type(int256).max : type(int256).min;

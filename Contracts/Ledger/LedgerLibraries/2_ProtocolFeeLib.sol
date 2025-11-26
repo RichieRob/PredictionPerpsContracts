@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 
-library 2_ProtocolFeeLib {
+library ProtocolFeeLib {
     event FeeConfigUpdated(address indexed recipient, uint16 feeBps, bool enabled);
     event FeeSkimmed(address indexed recipient, uint256 feeAamount);
 
@@ -24,7 +24,7 @@ library 2_ProtocolFeeLib {
         if (!s.feeEnabled || s.feeRecipient == address(0) || s.feeBps == 0) {
             return aReceived;
         }
-        uint256 feeA = (aReceived * s.feeBps) / 10_000;
+        uint256 feeA = (aReceived * s.feeBps) / 000;
         if (feeA == 0) return aReceived;
 
         // transfer aUSDC fee to recipient (continues earning yield)

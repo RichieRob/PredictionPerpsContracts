@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/proxy/Clones.sol";
 
 
 
-library 2_MarketManagementLib {
+library MarketManagementLib {
 
     using Clones for address;
 

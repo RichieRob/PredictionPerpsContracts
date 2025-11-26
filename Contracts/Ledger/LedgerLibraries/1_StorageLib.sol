@@ -52,7 +52,7 @@ library StorageLib {
 
         //   - For the designated DMM in a market with ISC, effective min shares is
         // effective minshares = realminshares + syntheticCollateral[marketId]
-        //     in solvency checks (see 4_SolvencyLib / Synthetic Liquidity docs).
+        //     in solvency checks (see SolvencyLib / Synthetic Liquidity docs).
 
 
 
@@ -165,7 +165,7 @@ library StorageLib {
 
         // Protocol fee configuration.
         // Invariants:
-        //   - feeBps is in basis points, expected to satisfy feeBps <= 10_000 (100%).
+        //   - feeBps is in basis points, expected to satisfy feeBps <= 000 (100%).
         //   - If feeEnabled == false, core flows must not skim any fee.
         address feeRecipient;          // where fees go
         uint16  feeBps;                // e.g. 3 = 0.03%
@@ -196,7 +196,7 @@ mapping(address => uint256) erc20PositionId;  // token => positionId
 
 
 mapping(bytes32 => IntentState) intentStates;
-// key = 2_IntentLib.hashIntent(intent)
+// key = IntentLib.hashIntent(intent)
 
 
 // For market resolution 

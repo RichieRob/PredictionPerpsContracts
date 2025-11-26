@@ -7,7 +7,7 @@ import "./2_IntentLib.sol";
 import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
 
-library 8_FillIntentLib {
+library FillIntentLib {
     
 
     /// @dev Pure P2P settlement: trader is always the buyer, msg.sender is the seller.
@@ -52,7 +52,7 @@ library 8_FillIntentLib {
         }
 
         // --- 1) Move exposure (Back/Lay) seller -> buyer ---
-        7_PositionTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             seller,
             buyer,
             intent.marketId,
@@ -63,7 +63,7 @@ library 8_FillIntentLib {
 
         // --- 2) Move ppUSDC/freeCollateral buyer -> seller ---
         // Pure redistribution; no mint/burn, no TVL change.
-        2_FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
+        FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
     }
 
     /// @dev Full intent flow: verify sig, track partial fills, then settle P2P.
@@ -82,10 +82,10 @@ library 8_FillIntentLib {
         require(fillQuote  > 0, "fillQuote=0");
 
         // EIP-712 sig check
-        address signer = 2_IntentLib.recoverSigner(intent, signature);
+        address signer = IntentLib.recoverSigner(intent, signature);
         require(signer == intent.trader, "bad sig");
 
-        bytes32 key = 2_IntentLib.hashIntent(intent);
+        bytes32 key = IntentLib.hashIntent(intent);
         StorageLib.IntentState storage st = s.intentStates[key];
 
         require(!st.cancelled, "intent cancelled");

@@ -30,7 +30,7 @@ import "./4_SolvencyLib.sol";
 
 
 
-library 5_LedgerLib {
+library LedgerLib {
     function getPositionLiquidity(
     address account,
     uint256 marketId,
@@ -49,7 +49,7 @@ library 5_LedgerLib {
     
     // adding the ISC to freeCollateral if the account is the DMM
 
-    uint256 isc = 2_MarketManagementLib.isDMM(account, marketId)
+    uint256 isc = MarketManagementLib.isDMM(account, marketId)
         ? s.syntheticCollateral[marketId]
         : 0;
     
@@ -57,7 +57,7 @@ library 5_LedgerLib {
 
     realFreeCollateral = s.realFreeCollateral[account];
 
-    int256 netAlloc = 4_SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
+    int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
 
     marketExposure = netAlloc + s.layOffset[account][marketId];
 
@@ -96,10 +96,10 @@ function getCreatedShares(address account, uint256 marketId, uint256 positionId)
 
 
     function getMinTilt(address account, uint256 marketId) internal view returns (int256 minTilt, uint256 minPositionId) {
-        return 3_HeapLib.getMinTilt(account, marketId);
+        return HeapLib.getMinTilt(account, marketId);
     }
 
     function getMaxTilt(address account, uint256 marketId) internal view returns (int256 maxTilt, uint256 maxPositionId) {
-        return 3_HeapLib.getMaxTilt(account, marketId);
+        return HeapLib.getMaxTilt(account, marketId);
     }
 }

@@ -4,9 +4,9 @@ pragma solidity ^0.8.20;
 import "./1_StorageLib.sol";
 import "./7_PositionTransferLib.sol";
 import "./2_MarketManagementLib.sol";
-import "./5_LedgerLib.sol";  // 👈 new import
+import "./5_LedgerLib.sol";  
 
-library 8_ERC20BridgeLib {
+library ERC20BridgeLib {
     event PositionERC20Registered(
         address indexed token,
         uint256 indexed marketId,
@@ -18,15 +18,15 @@ library 8_ERC20BridgeLib {
         uint256 marketId,
         uint256 positionId
     ) internal {
-        require(token != address(0), "8_ERC20BridgeLib: token=0");
+        require(token != address(0), "ERC20BridgeLib: token=0");
         require(
-            2_MarketManagementLib.positionExists(marketId, positionId),
-            "8_ERC20BridgeLib: position !exists"
+            MarketManagementLib.positionExists(marketId, positionId),
+            "ERC20BridgeLib: position !exists"
         );
 
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        require(!s.erc20Registered[token], "8_ERC20BridgeLib: already registered");
+        require(!s.erc20Registered[token], "ERC20BridgeLib: already registered");
 
         s.erc20Registered[token] = true;
         s.erc20MarketId[token]   = marketId;
@@ -41,21 +41,21 @@ library 8_ERC20BridgeLib {
         address to,
         uint256 amount
     ) internal {
-        require(amount > 0, "8_ERC20BridgeLib: zero amount");
+        require(amount > 0, "ERC20BridgeLib: zero amount");
 
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(msg.sender == token, "8_ERC20BridgeLib: only token");
-        require(s.erc20Registered[token], "8_ERC20BridgeLib: unregistered token");
+        require(msg.sender == token, "ERC20BridgeLib: only token");
+        require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
         uint256 marketId   = s.erc20MarketId[token];
         uint256 positionId = s.erc20PositionId[token];
 
         require(
-            2_MarketManagementLib.positionExists(marketId, positionId),
-            "8_ERC20BridgeLib: position gone"
+            MarketManagementLib.positionExists(marketId, positionId),
+            "ERC20BridgeLib: position gone"
         );
 
-        7_PositionTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             from,
             to,
             marketId,
@@ -85,7 +85,7 @@ library 8_ERC20BridgeLib {
     ///         Same for all positions in this market.
     function erc20TotalSupply(address token) internal view returns (uint256) {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.erc20Registered[token], "8_ERC20BridgeLib: unregistered token");
+        require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
         uint256 marketId = s.erc20MarketId[token];
 
@@ -103,14 +103,14 @@ library 8_ERC20BridgeLib {
         returns (uint256)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.erc20Registered[token], "8_ERC20BridgeLib: unregistered token");
+        require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
         uint256 marketId   = s.erc20MarketId[token];
         uint256 positionId = s.erc20PositionId[token];
 
 
          //ISC balance included in getFullCapacityShares for DMM
-        int256 avail = 5_LedgerLib.getCreatedShares(account, marketId, positionId);
+        int256 avail = LedgerLib.getCreatedShares(account, marketId, positionId);
 
 
         if (avail <= 0) return 0;

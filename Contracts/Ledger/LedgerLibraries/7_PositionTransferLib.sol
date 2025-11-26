@@ -7,7 +7,7 @@ import "./3_HeapLib.sol";
 import "./2_MarketManagementLib.sol";
 import "./6_ResolutionLib.sol";
 
-library 7_PositionTransferLib {
+library PositionTransferLib {
 
 /*//////////////////////////////////////////////////////////////
                        EVENTS
@@ -36,10 +36,10 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         // H_k += amount  via tilt
-        3_HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
 
         // If this made the account "over-collateralised" we can free some capital
-        4_SolvencyLib.deallocateExcess(account, marketId);
+        SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _receiveLay(
@@ -52,10 +52,10 @@ event PositionTransfer(
 
         // Lay received: layOffset += amount, tilt -= amount
         s.layOffset[account][marketId] += int256(amount);
-        3_HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
 
         // Again, receiving exposure can relax the tightest constraint
-        4_SolvencyLib.deallocateExcess(account, marketId);
+        SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _emitBack(
@@ -65,10 +65,10 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         // Sending Back: H_k -= amount via tilt
-        3_HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
 
         // Check we are still solvent after lowering H_k
-        4_SolvencyLib.ensureSolvency(account, marketId);
+        SolvencyLib.ensureSolvency(account, marketId);
     }
 
     function _emitLay(
@@ -81,10 +81,10 @@ event PositionTransfer(
 
         // Sending Lay: layOffset -= amount, tilt += amount
         s.layOffset[account][marketId] -= int256(amount);
-        3_HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
 
         // Check we remain solvent after changing offsets
-        4_SolvencyLib.ensureSolvency(account, marketId);
+        SolvencyLib.ensureSolvency(account, marketId);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -101,7 +101,7 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         require(amount > 0, "zero amount");
-        require(2_MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
         if (from != address(0)) {
             _emitBack(from, marketId, positionId, amount);
@@ -120,7 +120,7 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         require(amount > 0, "zero amount");
-        require(2_MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
         if (from != address(0)) {
             _emitLay(from, marketId, positionId, amount);
@@ -166,8 +166,8 @@ event PositionTransfer(
         // we need to update from because from might not actually have touched this market yet. This is because collateral essentially auto splits on transfer (if necessary)
         _trackResolvingMarkets(from, marketId);
         _trackResolvingMarkets(to, marketId); 
-        6_ResolutionLib._applyPendingWinnings(from);
-        6_ResolutionLib._applyPendingWinnings(to);
+        ResolutionLib._applyPendingWinnings(from);
+        ResolutionLib._applyPendingWinnings(to);
 
     }
 }

@@ -3,10 +3,10 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 
-/// @title 2_FreeCollateralLib
+/// @title FreeCollateralLib
 /// @notice Helpers to adjust freeCollateral and realTotalFreeCollateral
 ///         and mirror those changes as ppUSDC mint/burn events.
-library 2_FreeCollateralLib {
+library FreeCollateralLib {
 
       /// @dev Internal helper: emit a ppUSDC mint event via the ppUSDC contract.
     function emitPpUSDCMint(address to, uint256 amount) internal {

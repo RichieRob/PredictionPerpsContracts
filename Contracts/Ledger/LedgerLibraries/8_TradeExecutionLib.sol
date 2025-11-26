@@ -5,7 +5,7 @@ import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
 import "../Interfaces/IMarketMaker.sol";
 
-library 8_TradeExecutionLib {
+library TradeExecutionLib {
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL HELPERS
@@ -21,7 +21,7 @@ library 8_TradeExecutionLib {
         uint256 tokensOut
     ) internal {
         // 1) Position delta first
-        7_PositionTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             mm,
             trader,
             marketId,
@@ -31,7 +31,7 @@ library 8_TradeExecutionLib {
         );
 
         // 2) Net cash settlement: trader pays mm (ppUSDC move only)
-        2_FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
+        FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
     }
 
     function processSell(
@@ -44,7 +44,7 @@ library 8_TradeExecutionLib {
         uint256 usdcOut
     ) internal {
         // 1) Position delta first
-        7_PositionTransferLib.transferPosition(
+        PositionTransferLib.transferPosition(
             trader,
             mm,
             marketId,
@@ -54,7 +54,7 @@ library 8_TradeExecutionLib {
         );
 
         // 2) Net cash settlement: mm pays trader (ppUSDC move only)
-        2_FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
+        FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
     }
 
     /*//////////////////////////////////////////////////////////////

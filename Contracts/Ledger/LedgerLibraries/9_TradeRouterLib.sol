@@ -5,7 +5,7 @@ import "./8_TradeExecutionLib.sol";
 import "./2_MarketManagementLib.sol";
 import "./0_Types.sol";
 
-library 9_TradeRouterLib {
+library TradeRouterLib {
     using Types for *;
 
     function tradeWithPPUSDC(
@@ -21,12 +21,12 @@ library 9_TradeRouterLib {
         require(mm != address(0), "mm=0");
         require(primaryAmount > 0, "amt=0");
         require(
-            2_MarketManagementLib.positionExists(marketId, positionId),
+            MarketManagementLib.positionExists(marketId, positionId),
             "pos !exists"
         );
 
         if (kind == Types.TradeKind.BUY_EXACT_TOKENS) {
-            8_TradeExecutionLib.buyExactTokens(
+            TradeExecutionLib.buyExactTokens(
                 trader,
                 mm,
                 marketId,
@@ -37,7 +37,7 @@ library 9_TradeRouterLib {
             );
 
         } else if (kind == Types.TradeKind.BUY_FOR_USDC) {
-            8_TradeExecutionLib.buyForUSDC(
+            TradeExecutionLib.buyForUSDC(
                 trader,
                 mm,
                 marketId,
@@ -48,7 +48,7 @@ library 9_TradeRouterLib {
             );
 
         } else if (kind == Types.TradeKind.SELL_EXACT_TOKENS) {
-            8_TradeExecutionLib.sellExactTokens(
+            TradeExecutionLib.sellExactTokens(
                 trader,
                 mm,
                 marketId,
@@ -59,7 +59,7 @@ library 9_TradeRouterLib {
             );
 
         } else if (kind == Types.TradeKind.SELL_FOR_USDC) {
-            8_TradeExecutionLib.sellForUSDC(
+            TradeExecutionLib.sellForUSDC(
                 trader,
                 mm,
                 marketId,

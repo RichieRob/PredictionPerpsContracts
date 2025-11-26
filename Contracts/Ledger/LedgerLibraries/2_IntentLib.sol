@@ -5,7 +5,7 @@ import "./0_Types.sol";
 import "./1_StorageLib.sol";
 
 /**
- * @title 2_IntentLib — EIP-712 hashing for "buy-only" intents
+ * @title IntentLib — EIP-712 hashing for "buy-only" intents
  *
  * @notice
  *  The protocol executes both "buy" and "sell" semantics on-chain.
@@ -47,7 +47,7 @@ import "./1_StorageLib.sol";
  */
 
  
-library 2_IntentLib {
+library IntentLib {
     event IntentCancelled(
         address indexed trader,
         uint256 indexed marketId,

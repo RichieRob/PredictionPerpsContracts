@@ -5,13 +5,13 @@ pragma solidity ^0.8.20;
 import "./1_StorageLib.sol";
 import "./2_FreeCollateralLib.sol";
 
-library 3_AllocateCapitalLib {
+library AllocateCapitalLib {
     function allocate(address account, uint256 marketId, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.realFreeCollateral[account] >= amount, "Insufficient free collateral");
         
         // reduce the amount of free capital the account has
-        2_FreeCollateralLib.burnPpUSDC(account, amount);
+        FreeCollateralLib.burnPpUSDC(account, amount);
 
         
         // allocate that to this marketId in terms of USDC spent
@@ -28,7 +28,7 @@ library 3_AllocateCapitalLib {
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
         // increase the amount of free capital the account has
-        2_FreeCollateralLib.mintPpUSDC(account, amount);
+        FreeCollateralLib.mintPpUSDC(account, amount);
 
         // increase the amount of redemptions made
         s.redeemedUSDC[account][marketId] += amount;

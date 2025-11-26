@@ -7,28 +7,12 @@ import "./2_MarketManagementLib.sol";
 import "./5_LedgerLib.sol";
 import "../Interfaces/IOracle.sol";
 
-library 6_ResolutionLib {
+library ResolutionLib {
     event MarketResolved(uint256 indexed marketId, uint256 winningPositionId);
 
     /*//////////////////////////////////////////////////////////////
                             RESOLUTION
     //////////////////////////////////////////////////////////////*/
-
-    // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-import "./1_StorageLib.sol";
-import "./2_MarketManagementLib.sol";
-
-interface IOracle {
-    function getResolutionData(uint256 marketId, bytes calldata params)
-        external
-        view
-        returns (bool isResolved, uint256 winningPositionId);
-}
-
-library 6_ResolutionLib {
-    event MarketResolved(uint256 indexed marketId, uint256 winningPositionId);
 
     // ------------------------------------------------------------
     // Core resolver with ALL fundamental restrictions
@@ -42,7 +26,7 @@ library 6_ResolutionLib {
         require(s.doesResolve[marketId], "Market does not resolve");
         require(!s.marketResolved[marketId], "Already resolved");
         require(
-            2_MarketManagementLib.positionExists(marketId, winningPositionId),
+            MarketManagementLib.positionExists(marketId, winningPositionId),
             "Invalid winner"
         );
 
@@ -56,20 +40,20 @@ library 6_ResolutionLib {
             "Resolving market cannot have ISC"
         );
 
-        s.marketResolved[marketId]        = true;
-        s.winningPositionId[marketId]     = winningPositionId;
-        
-        // add the current market value to effectiveFreeCollateral
+        s.marketResolved[marketId]    = true;
+        s.winningPositionId[marketId] = winningPositionId;
+
+        // add the current market value to effectiveTotalFreeCollateralDelta
         uint256 mv = s.marketValue[marketId];
         if (mv > 0) {
-        s.effectiveTotalFreeCollateralDelta += mv;
-        
+            s.effectiveTotalFreeCollateralDelta += mv;
+        }
 
         emit MarketResolved(marketId, winningPositionId);
     }
 
     // ------------------------------------------------------------
-    // 2) Oracle-driven resolution
+    // Oracle-driven resolution
     // ------------------------------------------------------------
     function resolveFromOracle(uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
@@ -85,8 +69,6 @@ library 6_ResolutionLib {
 
         _resolveMarketCore(marketId, winningPositionId);
     }
-}
-
 
     /*//////////////////////////////////////////////////////////////
                          CLAIMING WINNINGS
@@ -95,62 +77,60 @@ library 6_ResolutionLib {
     /// @dev Claims winnings for a single market and removes it from the user's list.
     ///      Returns the winnings amount for this market (0 if none).
     function _claimForMarket(address user, uint256 marketId)
-    internal
-    returns (uint256 winnings)
-{
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    if (!s.marketResolved[marketId]) return 0;
+        internal
+        returns (uint256 winnings)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        if (!s.marketResolved[marketId]) return 0;
 
-    uint256 winner = s.winningPositionId[marketId];
-    int256 exposure = 5_LedgerLib.getCreatedShares(user, marketId, winner);
+        uint256 winner = s.winningPositionId[marketId];
+        int256 exposure = LedgerLib.getCreatedShares(user, marketId, winner);
 
-    // Only positive exposure pays out
-    if (exposure <= 0) {
-        return 0;
-    }
-
-    winnings = uint256(exposure);
-
-    // 1) Remove the winning exposure so it can't be claimed again
-    s.tilt[user][marketId][winner] -= exposure;
-
-    // 2) Update market-level accounting
-    //    Redemptions and marketValue / TotalMarketsValue
-    require(
-        s.marketValue[marketId] >= winnings,
-        "Resolution: insufficient market value"
-    );
-
-    s.Redemptions[marketId] += winnings;
-    s.marketValue[marketId] -= winnings;
-    s.TotalMarketsValue     -= winnings;
-    // 3) Effective total collateral delta shrinks by the same amount
-    require(
-        s.effectiveTotalFreeCollateralDelta >= winnings,
-        "Resolution: delta underflow"
-    );
-
-    s.effectiveTotalFreeCollateralDelta -= winnings;
-
-    // 3) Swap-remove this market from user's list (if present)
-    uint256 rawIdx = s.userMarketIndex[user][marketId];
-    if (rawIdx != 0) {
-        uint256 idx     = rawIdx - 1;
-        uint256 lastIdx = s.userMarkets[user].length - 1;
-
-        if (idx != lastIdx) {
-            uint256 lastMarket = s.userMarkets[user][lastIdx];
-            s.userMarkets[user][idx] = lastMarket;
-            s.userMarketIndex[user][lastMarket] = idx + 1;
+        // Only positive exposure pays out
+        if (exposure <= 0) {
+            return 0;
         }
 
-        s.userMarkets[user].pop();
-        s.userMarketIndex[user][marketId] = 0;
+        winnings = uint256(exposure);
+
+        // 1) Remove the winning exposure so it can't be claimed again
+        s.tilt[user][marketId][winner] -= exposure;
+
+        // 2) Update market-level accounting
+        require(
+            s.marketValue[marketId] >= winnings,
+            "Resolution: insufficient market value"
+        );
+
+        s.Redemptions[marketId] += winnings;
+        s.marketValue[marketId] -= winnings;
+        s.TotalMarketsValue     -= winnings;
+
+        // 3) Effective total collateral delta shrinks by the same amount
+        require(
+            s.effectiveTotalFreeCollateralDelta >= winnings,
+            "Resolution: delta underflow"
+        );
+        s.effectiveTotalFreeCollateralDelta -= winnings;
+
+        // 4) Swap-remove this market from user's list (if present)
+        uint256 rawIdx = s.userMarketIndex[user][marketId];
+        if (rawIdx != 0) {
+            uint256 idx     = rawIdx - 1;
+            uint256 lastIdx = s.userMarkets[user].length - 1;
+
+            if (idx != lastIdx) {
+                uint256 lastMarket = s.userMarkets[user][lastIdx];
+                s.userMarkets[user][idx] = lastMarket;
+                s.userMarketIndex[user][lastMarket] = idx + 1;
+            }
+
+            s.userMarkets[user].pop();
+            s.userMarketIndex[user][marketId] = 0;
+        }
+
+        return winnings;
     }
-
-    return winnings;
-}
-
 
     /// @dev Walk all markets the user has touched and realise any pending winnings.
     ///      Uses swap-remove, so we need the `while` loop pattern.
@@ -174,23 +154,23 @@ library 6_ResolutionLib {
         }
 
         if (totalWinnings > 0) {
-            2_FreeCollateralLib.mintPpUSDC(user, totalWinnings);
+            FreeCollateralLib.mintPpUSDC(user, totalWinnings);
         }
     }
 
     /// @dev Batch claim for an explicit list of markets (e.g. UI 'claim all for these').
-    ///      This is *internal*; the contract exposes the external entrypoint.
-    function _batchClaimWinnings(address user, uint256[] calldata marketIds) internal {
+    function _batchClaimWinnings(address user, uint256[] calldata marketIds)
+        internal
+    {
         uint256 totalWinnings = 0;
 
         for (uint256 i = 0; i < marketIds.length; ++i) {
             uint256 marketId = marketIds[i];
-            // If user never touched it or it's not resolved, _claimForMarket will just return 0.
             totalWinnings += _claimForMarket(user, marketId);
         }
 
         if (totalWinnings > 0) {
-            2_FreeCollateralLib.mintPpUSDC(user, totalWinnings);
+            FreeCollateralLib.mintPpUSDC(user, totalWinnings);
         }
     }
 
@@ -200,7 +180,11 @@ library 6_ResolutionLib {
 
     /// @notice "Claims-aware" free collateral view:
     ///         base minted line + unclaimed resolved winnings.
-    function effectiveFreeCollateral(address account) internal view returns (uint256) {
+    function effectiveFreeCollateral(address account)
+        internal
+        view
+        returns (uint256)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256 base = s.realFreeCollateral[account];
         uint256[] memory markets = s.userMarkets[account];
@@ -220,7 +204,11 @@ library 6_ResolutionLib {
     }
 
     /// @notice "Raw minted line only" – ignores any unclaimed winnings.
-    function realFreeCollateral(address account) internal view returns (uint256) {
+    function realFreeCollateral(address account)
+        internal
+        view
+        returns (uint256)
+    {
         StorageLib.Storage storage s = StorageLib.getStorage();
         return s.realFreeCollateral[account];
     }

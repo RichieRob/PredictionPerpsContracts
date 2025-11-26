@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract MockOracle {
-    mapping(uint256 => bool) public isResolved;
-    mapping(uint256 => uint256) public winningPositionId;
+import "../Interfaces/IOracle.sol";
 
-    function setResolution(uint256 marketId, uint256 _winningPositionId) external {
-        isResolved[marketId] = true;
-        winningPositionId[marketId] = _winningPositionId;
+contract MockOracle is IOracle {
+    bool public resolved;
+    uint256 public winner;
+
+    function pushResolution(uint256 _winner) external {
+        resolved = true;
+        winner = _winner;
     }
 
-    function getResolutionData(uint256 marketId, bytes calldata /*params*/) external view returns (bool, uint256) {
-        return (isResolved[marketId], winningPositionId[marketId]);
+    function getResolutionData(uint256 marketId, bytes calldata)
+        external view
+        returns (bool, uint256)
+    {
+        return (resolved, winner);
     }
 }

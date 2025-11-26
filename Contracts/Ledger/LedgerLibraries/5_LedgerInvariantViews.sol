@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./SolvencyLib.sol";
-import "./MarketManagementLib.sol";
+import "./1_StorageLib.sol";
+import "./4_SolvencyLib.sol";
+import "./2_MarketManagementLib.sol";
 
-/// @title LedgerInvariantViews
+/// @title 5_LedgerInvariantViews
 /// @notice Pure view helpers to reconstruct and check high-level ledger invariants
 ///         in tests (and optionally via external wrappers on MarketMakerLedger).
-library LedgerInvariantViews {
+library 5_LedgerInvariantViews {
     /*//////////////////////////////////////////////////////////////
                          1. MARKET ACCOUNTING
     //////////////////////////////////////////////////////////////*/
@@ -38,8 +38,8 @@ library LedgerInvariantViews {
         returns (int256 effMin)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
-        effMin         = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
+        int256 realMin = 4_SolvencyLib.computeRealMinShares(s, account, marketId);
+        effMin         = 4_SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -58,7 +58,7 @@ library LedgerInvariantViews {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
         address dmm = s.marketToDMM[marketId];
-        int256 realMin = SolvencyLib.computeRealMinShares(s, dmm, marketId);
+        int256 realMin = 4_SolvencyLib.computeRealMinShares(s, dmm, marketId);
         if (realMin >= 0) return 0;
         return uint256(-realMin);
     }
@@ -89,7 +89,7 @@ library LedgerInvariantViews {
         returns (uint256 lhs, uint256 rhs)
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        lhs = s.TotalMarketsValue + s.totalFreeCollateral;
+        lhs = s.TotalMarketsValue + s.realTotalFreeCollateral;
         rhs = s.totalValueLocked;
     }
 
@@ -129,15 +129,15 @@ library LedgerInvariantViews {
     returns (bool ok)
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256[] memory markets = MarketManagementLib.getMarkets();
+    uint256[] memory markets = 2_MarketManagementLib.getMarkets();
 
     ok = true;
 
     for (uint256 i = 0; i < markets.length; i++) {
         uint256 marketId = markets[i];
 
-        int256 realMin = SolvencyLib.computeRealMinShares(s, account, marketId);
-        int256 effMin  = SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
+        int256 realMin = 4_SolvencyLib.computeRealMinShares(s, account, marketId);
+        int256 effMin  = 4_SolvencyLib.computeEffectiveMinShares(s, account, marketId, realMin);
 
         if (effMin < 0) {
             ok = false;
@@ -152,8 +152,8 @@ function redeemabilityState(address account, uint256 marketId)
     returns (int256 netAlloc, int256 redeemable, int256 margin)
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    netAlloc    = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
-    redeemable  = SolvencyLib.computeRedeemable(s, account, marketId);
+    netAlloc    = 4_SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
+    redeemable  = 4_SolvencyLib.computeRedeemable(s, account, marketId);
     margin      = netAlloc - redeemable; // should be >= 0
 }
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./FreeCollateralLib.sol";
-import "./PositionTransferLib.sol";
+import "./2_FreeCollateralLib.sol";
+import "./7_PositionTransferLib.sol";
 import "../Interfaces/IMarketMaker.sol";
 
-library TradeExecutionLib {
+library 8_TradeExecutionLib {
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL HELPERS
@@ -21,7 +21,7 @@ library TradeExecutionLib {
         uint256 tokensOut
     ) internal {
         // 1) Position delta first
-        PositionTransferLib.transferPosition(
+        7_PositionTransferLib.transferPosition(
             mm,
             trader,
             marketId,
@@ -31,7 +31,7 @@ library TradeExecutionLib {
         );
 
         // 2) Net cash settlement: trader pays mm (ppUSDC move only)
-        FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
+        2_FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
     }
 
     function processSell(
@@ -44,7 +44,7 @@ library TradeExecutionLib {
         uint256 usdcOut
     ) internal {
         // 1) Position delta first
-        PositionTransferLib.transferPosition(
+        7_PositionTransferLib.transferPosition(
             trader,
             mm,
             marketId,
@@ -54,7 +54,7 @@ library TradeExecutionLib {
         );
 
         // 2) Net cash settlement: mm pays trader (ppUSDC move only)
-        FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
+        2_FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
     }
 
     /*//////////////////////////////////////////////////////////////

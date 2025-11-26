@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./Types.sol";
-import "./StorageLib.sol";
+import "./0_Types.sol";
+import "./1_StorageLib.sol";
 
 /**
- * @title IntentLib — EIP-712 hashing for "buy-only" intents
+ * @title 2_IntentLib — EIP-712 hashing for "buy-only" intents
  *
  * @notice
  *  The protocol executes both "buy" and "sell" semantics on-chain.
@@ -47,7 +47,7 @@ import "./StorageLib.sol";
  */
 
  
-library IntentLib {
+library 2_IntentLib {
     event IntentCancelled(
         address indexed trader,
         uint256 indexed marketId,

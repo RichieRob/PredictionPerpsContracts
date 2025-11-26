@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
+import "./1_StorageLib.sol";
 import "../Interfaces/IERC20Permit.sol";
 import "../Interfaces/IPermit2.sol";
-import "./TypesPermit.sol";
-import "./FreeCollateralLib.sol";
-import "./ProtocolFeeLib.sol";
+import "./T0_TypesPermit.sol";
+import "./2_FreeCollateralLib.sol";
+import "./2_ProtocolFeeLib.sol";
+import "./6_ResolutionLib.sol";
 
-/// @title DepositWithdrawLib
+/// @title 7_DepositWithdrawLib
 /// @notice Handles trader deposits and withdrawals to/from Aave,
 ///         integrating optional protocol fee skimming via aUSDC.
-library DepositWithdrawLib {
+library 7_DepositWithdrawLib {
     using TypesPermit for *;
 
     // mode constants for unified deposit
@@ -48,14 +49,22 @@ library DepositWithdrawLib {
         uint256 aReceived = a1 - a0;
 
         // 3. Skim protocol fee (if enabled)
-        recordedAmount = ProtocolFeeLib.skimOnAaveSupply(aReceived);
+        recordedAmount = 2_ProtocolFeeLib.skimOnAaveSupply(aReceived);
         require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
 
         // 4. Credit net collateral to `to` (and emit ppUSDC Mint event)
-        FreeCollateralLib.mintPpUSDC(to, recordedAmount);
+        2_FreeCollateralLib.mintPpUSDC(to, recordedAmount);
 
         // 5. Track TVL principal
         s.totalValueLocked += recordedAmount;
+
+        //apply winnings we can process both from and to
+        6_ResolutionLib._applyPendingWinnings(to);
+        if(from == to){
+            return;
+        } else {
+        6_ResolutionLib._applyPendingWinnings(from);
+        }
     }
 
     /// @notice Simple direct deposit from msg.sender → msg.sender with no min.
@@ -180,18 +189,28 @@ library DepositWithdrawLib {
     // -----------------------------------------------------------------------
     // Withdraw directly to recipient (no fee)
     // -----------------------------------------------------------------------
-    function withdrawTo(address account, uint256 amount, address to) internal {
+    function withdrawWithoutClaims(address account, uint256 amount, address to) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(account == msg.sender, "Invalid account");
         require(to != address(0), "Invalid recipient");
 
         // This will revert internally if freeCollateral[account] < amount
-        FreeCollateralLib.burnPpUSDC(account, amount);
+        2_FreeCollateralLib.burnPpUSDC(account, amount);
         s.totalValueLocked -= amount;
 
         // Withdraw from Aave directly to recipient
         s.aavePool.withdraw(address(s.usdc), amount, to);
     }
+
+    /// @notice User withdraws and we first realise any pending winnings.
+    function withdrawWithClaims(address account, uint256 amount, address to) internal {
+        // 1. Realise pending winnings (may mint more freeCollateral).
+        6_ResolutionLib._applyPendingWinnings(account);
+
+        // 2. Do the actual accounting + Aave withdraw in ONE place.
+        withdrawWithoutClaims(account, amount, to);
+    }
+
 
     // -----------------------------------------------------------------------
     // Owner interest skim (no double-transfer risk)

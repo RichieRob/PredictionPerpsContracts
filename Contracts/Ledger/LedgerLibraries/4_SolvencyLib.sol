@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./HeapLib.sol";
-import "./AllocateCapitalLib.sol";
-import "./MarketManagementLib.sol";
+import "./1_StorageLib.sol";
+import "./3_HeapLib.sol";
+import "./3_AllocateCapitalLib.sol";
+import "./2_MarketManagementLib.sol";
 
-/// @title SolvencyLib
+/// @title 4_SolvencyLib
 /// @notice All the "mathy" rules that keep an account solvent in a market.
 /// @dev There are really two constraints:
 ///
@@ -34,7 +34,7 @@ import "./MarketManagementLib.sol";
 ///
 ///  Both are written so that if they run after any operation, the account
 ///  ends up satisfying both constraints.
-library SolvencyLib {
+library 4_SolvencyLib {
 
     /// @notice Signed "real capital" the account has in this market.
     /// @dev
@@ -71,7 +71,7 @@ library SolvencyLib {
         address account,
         uint256 marketId
     ) internal view returns (int256) {
-        (int256 minTilt, ) = HeapLib.getMinTilt(account, marketId);
+        (int256 minTilt, ) = 3_HeapLib.getMinTilt(account, marketId);
         int256 netAlloc    = _netUSDCAllocationSigned(s, account, marketId);
         return netAlloc + s.layOffset[account][marketId] + int256(minTilt);
     }
@@ -91,7 +91,7 @@ library SolvencyLib {
         uint256 marketId,
         int256 realMinShares
     ) internal view returns (int256) {
-        uint256 isc = MarketManagementLib.isDMM(account, marketId)
+        uint256 isc = 2_MarketManagementLib.isDMM(account, marketId)
             ? s.syntheticCollateral[marketId]
             : 0;
         return realMinShares + int256(isc);
@@ -119,7 +119,7 @@ library SolvencyLib {
         address account,
         uint256 marketId
     ) internal view returns (int256) {
-        (int256 maxTilt, ) = HeapLib.getMaxTilt(account, marketId);
+        (int256 maxTilt, ) = 3_HeapLib.getMaxTilt(account, marketId);
         return -s.layOffset[account][marketId] - int256(maxTilt);
     }
 
@@ -140,7 +140,7 @@ library SolvencyLib {
         // ---------------------------------------------------------
         if (effMin < 0) {
             uint256 shortfall = uint256(-effMin);
-            AllocateCapitalLib.allocate(account, marketId, shortfall);
+            3_AllocateCapitalLib.allocate(account, marketId, shortfall);
         }
 
         // ---------------------------------------------------------
@@ -158,7 +158,7 @@ library SolvencyLib {
             int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
             if (netAlloc < redeemable) {
                 uint256 diff = uint256(redeemable - netAlloc);
-                AllocateCapitalLib.allocate(account, marketId, diff);
+                3_AllocateCapitalLib.allocate(account, marketId, diff);
             }
         }
     }
@@ -196,7 +196,7 @@ library SolvencyLib {
 
         // DMM constraint: if the DMM is leaning on ISC (realMin < 0),
         // they must not deallocate more than their remaining real stake.
-        if (MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
+        if (2_MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
             if (netAlloc > 0) {
                 amount = _min(amount, uint256(netAlloc));
             } else {
@@ -205,7 +205,7 @@ library SolvencyLib {
         }
 
         if (amount > 0) {
-            AllocateCapitalLib.deallocate(account, marketId, amount);
+            3_AllocateCapitalLib.deallocate(account, marketId, amount);
         }
     }
 

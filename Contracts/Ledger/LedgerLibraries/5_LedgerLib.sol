@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./HeapLib.sol";
-import "./MarketManagementLib.sol";
-import "./SolvencyLib.sol";
+import "./1_StorageLib.sol";
+import "./3_HeapLib.sol";
+import "./2_MarketManagementLib.sol";
+import "./4_SolvencyLib.sol";
 
 
 // There are two distinct "share" notions:
@@ -30,7 +30,7 @@ import "./SolvencyLib.sol";
 
 
 
-library LedgerLib {
+library 5_LedgerLib {
     function getPositionLiquidity(
     address account,
     uint256 marketId,
@@ -49,15 +49,15 @@ library LedgerLib {
     
     // adding the ISC to freeCollateral if the account is the DMM
 
-    uint256 isc = MarketManagementLib.isDMM(account, marketId)
+    uint256 isc = 2_MarketManagementLib.isDMM(account, marketId)
         ? s.syntheticCollateral[marketId]
         : 0;
     
     amountOfISCForThisAccountAndMarket = isc;
 
-    realFreeCollateral = s.freeCollateral[account];
+    realFreeCollateral = s.realFreeCollateral[account];
 
-    int256 netAlloc = SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
+    int256 netAlloc = 4_SolvencyLib._netUSDCAllocationSigned(s, account, marketId);
 
     marketExposure = netAlloc + s.layOffset[account][marketId];
 
@@ -96,10 +96,10 @@ function getCreatedShares(address account, uint256 marketId, uint256 positionId)
 
 
     function getMinTilt(address account, uint256 marketId) internal view returns (int256 minTilt, uint256 minPositionId) {
-        return HeapLib.getMinTilt(account, marketId);
+        return 3_HeapLib.getMinTilt(account, marketId);
     }
 
     function getMaxTilt(address account, uint256 marketId) internal view returns (int256 maxTilt, uint256 maxPositionId) {
-        return HeapLib.getMaxTilt(account, marketId);
+        return 3_HeapLib.getMaxTilt(account, marketId);
     }
 }

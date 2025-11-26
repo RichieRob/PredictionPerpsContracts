@@ -41,11 +41,11 @@ function setLedger(address newLedger) external onlyOwner {
     // --- Views wired to ledger ---
 
     function totalSupply() public view override returns (uint256) {
-        return _ledger().totalFreeCollateral();
+        return _ledger().effectiveTotalFreeCollateral();
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        return _ledger().freeCollateralOf(account);
+        return _ledger().effectiveFreeCollateral(account);
     }
 
     // --- Core transfer logic wired to ledger ---

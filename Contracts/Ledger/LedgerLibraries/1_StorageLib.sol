@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Types.sol"; // <-- needed for BlockData and TokenData
+import "./0_Types.sol"; // <-- needed for BlockData and TokenData
 
 interface IAavePool {
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
@@ -21,7 +21,7 @@ library StorageLib {
         uint256 filledPrimary; // how many tokens have been filled so far
         bool    cancelled;     // explicit kill switch
     }
-    
+
     struct Storage {
         // Core tokens/protocols
         IERC20 usdc;
@@ -52,7 +52,7 @@ library StorageLib {
 
         //   - For the designated DMM in a market with ISC, effective min shares is
         // effective minshares = realminshares + syntheticCollateral[marketId]
-        //     in solvency checks (see SolvencyLib / Synthetic Liquidity docs).
+        //     in solvency checks (see 4_SolvencyLib / Synthetic Liquidity docs).
 
 
 
@@ -70,8 +70,8 @@ library StorageLib {
         
         
         // Free collateral (per MM): unallocated USDC available to a marketmaker for new trades or withdrawl.
-        // Increased on deposit, decreased on allocation. Mirrors totalFreeCollateral but specific to market maker.
-        mapping(address => uint256) freeCollateral; // account => amount
+        // Increased on deposit, decreased on allocation. Mirrors realTotalFreeCollateral but specific to market maker.
+        mapping(address => uint256) realFreeCollateral; // account => amount
 
         // Cumulative USDC this MM has ever allocated into this market.
         // Monotone increasing; never decreased.
@@ -111,7 +111,7 @@ library StorageLib {
         // Global free collateral across all MMs (Σ freeCollateral[account]).
         // Increases on deposits and deallocations, decreases on allocations and withdrawals.
         
-        uint256 totalFreeCollateral;
+        uint256 realTotalFreeCollateral;
 
         // Total principal actually held in Aave (baseline TVL, excluding interest).
         // Used as reference when skimming yield: interest = aUSDC.balanceOf(this) - totalValueLocked.
@@ -195,15 +195,30 @@ mapping(address => uint256) erc20MarketId;    // token => marketId
 mapping(address => uint256) erc20PositionId;  // token => positionId
 
 
-
-// in StorageLib.Storage:
-
-
-
 mapping(bytes32 => IntentState) intentStates;
-// key = IntentLib.hashIntent(intent)
+// key = 2_IntentLib.hashIntent(intent)
 
 
+// For market resolution 
+mapping(uint256 => bool) marketResolved; // flag resolved markets
+mapping(uint256 => bool) doesResolve; // flag markets which CAN resolve
+mapping(uint256 => address) marketOracle; // Oracle (only allowed for resolving markets otherwise address(0))
+mapping(uint256 => bytes) marketOracleParams; // Market -> Oracle params anything info oracle might need about the market
+mapping(uint256 => uint256) winningPositionId; // for resolved markets gives the position of the winning outcome
+mapping(address => uint256[]) userMarkets; // The non claimed from markets that the user has touched. Array 
+mapping(address => mapping (uint256 => uint256)) userMarketIndex; // position of a market in the userMarkets array  // using 1 for raw index 0
+
+// Delta between realTotalFreeCollateral and effective total
+// (which includes unclaimed winnings in resolved markets).
+// Invariant:
+//   effectiveTotalFreeCollateral = realTotalFreeCollateral + effectiveDelta.
+//
+// - On resolve(market):  effectiveDelta += marketValue[marketId].
+// - On claim(winnings):  effectiveDelta -= winnings. // because the realFreeCollateral is increased
+
+uint256 effectiveTotalFreeCollateralDelta;
+
+    
 
 
 

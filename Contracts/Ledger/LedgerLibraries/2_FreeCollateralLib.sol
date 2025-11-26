@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
+import "./1_StorageLib.sol";
 
-/// @title FreeCollateralLib
-/// @notice Helpers to adjust freeCollateral and totalFreeCollateral
+/// @title 2_FreeCollateralLib
+/// @notice Helpers to adjust freeCollateral and realTotalFreeCollateral
 ///         and mirror those changes as ppUSDC mint/burn events.
-library FreeCollateralLib {
+library 2_FreeCollateralLib {
 
       /// @dev Internal helper: emit a ppUSDC mint event via the ppUSDC contract.
     function emitPpUSDCMint(address to, uint256 amount) internal {
@@ -27,8 +27,8 @@ library FreeCollateralLib {
     function mintPpUSDC(address account, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        s.freeCollateral[account] += amount;
-        s.totalFreeCollateral     += amount;
+        s.realFreeCollateral[account] += amount;
+        s.realTotalFreeCollateral     += amount;
 
         // Mirror as ppUSDC mint
         emitPpUSDCMint(account, amount);
@@ -38,10 +38,10 @@ library FreeCollateralLib {
     /// @dev Reverts if freeCollateral would underflow.
     function burnPpUSDC(address account, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[account] >= amount, "Insufficient free collateral");
+        require(s.realFreeCollateral[account] >= amount, "Insufficient free collateral");
 
-        s.freeCollateral[account] -= amount;
-        s.totalFreeCollateral     -= amount;
+        s.realFreeCollateral[account] -= amount;
+        s.realTotalFreeCollateral     -= amount;
 
         // Mirror as ppUSDC burn
         emitPpUSDCBurn(account, amount);
@@ -51,9 +51,9 @@ library FreeCollateralLib {
     function transferFreeCollateral(address from, address to, uint256 amount) internal {
         if (amount == 0 || from == to) return;
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[from] >= amount, "Insufficient free collateral");
-        s.freeCollateral[from] -= amount;
-        s.freeCollateral[to]   += amount;
-        // totalFreeCollateral unchanged
+        require(s.realFreeCollateral[from] >= amount, "Insufficient free collateral");
+        s.realFreeCollateral[from] -= amount;
+        s.realFreeCollateral[to]   += amount;
+        // realTotalFreeCollateral unchanged
     }
 }

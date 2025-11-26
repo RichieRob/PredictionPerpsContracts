@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./FreeCollateralLib.sol";
+import "./1_StorageLib.sol";
+import "./2_FreeCollateralLib.sol";
 
-library AllocateCapitalLib {
+library 3_AllocateCapitalLib {
     function allocate(address account, uint256 marketId, uint256 amount) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.freeCollateral[account] >= amount, "Insufficient free collateral");
+        require(s.realFreeCollateral[account] >= amount, "Insufficient free collateral");
         
         // reduce the amount of free capital the account has
-        FreeCollateralLib.burnPpUSDC(account, amount);
+        2_FreeCollateralLib.burnPpUSDC(account, amount);
 
         
         // allocate that to this marketId in terms of USDC spent
@@ -28,7 +28,7 @@ library AllocateCapitalLib {
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
         // increase the amount of free capital the account has
-        FreeCollateralLib.mintPpUSDC(account, amount);
+        2_FreeCollateralLib.mintPpUSDC(account, amount);
 
         // increase the amount of redemptions made
         s.redeemedUSDC[account][marketId] += amount;

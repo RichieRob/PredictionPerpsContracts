@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./Types.sol";
+import "./1_StorageLib.sol";
+import "./0_Types.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
 
 
-library MarketManagementLib {
+library 2_MarketManagementLib {
 
     using Clones for address;
 
@@ -23,20 +23,38 @@ library MarketManagementLib {
     string memory name,
     string memory ticker,
     address dmm,
-    uint256 iscAmount
+    uint256 iscAmount,
+    bool doesResolve,
+    address oracle,
+    bytes calldata oracleParams
 ) internal returns (uint256 marketId) {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    require(s.allowedDMMs[dmm], "DMM not allowed");
+    
+    if (doesResolve) {
+        require(dmm == address(0), "Resolving markets cannot have DMM");
+        require(iscAmount == 0, "Resolving markets cannot have ISC");
+        require(oracle != address(0), "Resolving markets require oracle");
+        // Optional: require(oracleParams.length > 0) if needed
+    } else {
+        require(s.allowedDMMs[dmm], "DMM not allowed");
+        require(oracle == address(0), "no Oracle allowed");
+        require(oracleParams.length == 0, "Oracle Params should be blank");
+    }
 
     marketId = s.nextMarketId++;
     s.allMarkets.push(marketId);
 
     // ✅ use our own metadata
-    s.marketNames[marketId]   = name;
+    s.marketNames[marketId] = name;
     s.marketTickers[marketId] = ticker;
 
     s.marketToDMM[marketId] = dmm;
     s.syntheticCollateral[marketId] = iscAmount;
+
+    // Store immutable resolve flag and oracle details
+    s.doesResolve[marketId] = doesResolve;
+    s.marketOracle[marketId] = oracle;
+    s.marketOracleParams[marketId] = oracleParams;
 
     emit MarketCreated(marketId, name, ticker);
     emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
+import "./1_StorageLib.sol";
 
-library ProtocolFeeLib {
+library 2_ProtocolFeeLib {
     event FeeConfigUpdated(address indexed recipient, uint16 feeBps, bool enabled);
     event FeeSkimmed(address indexed recipient, uint256 feeAamount);
 

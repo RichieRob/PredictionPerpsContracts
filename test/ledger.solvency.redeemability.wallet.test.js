@@ -207,7 +207,7 @@ describe("MarketMakerLedger – redeemability with wallet flows", function () {
     // With no DMM freeCollateral, this sell-for-USDC would force the DMM into:
     //   redeemable(DMM) > netUSDCAllocation(DMM)
     // ensureSolvency(dmm) tries to allocate real capital from freeCollateral[dmm],
-    // finds 0, and reverts via AllocateCapitalLib with "Insufficient free collateral".
+    // finds 0, and reverts via 3_AllocateCapitalLib with "Insufficient free collateral".
     const TARGET_USDC_OUT = ethers.parseUnits("300", 6);
     const MAX_TOKENS_IN   = ethers.parseUnits("400", 6);
 

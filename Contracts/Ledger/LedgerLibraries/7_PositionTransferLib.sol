@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./StorageLib.sol";
-import "./SolvencyLib.sol";
-import "./HeapLib.sol";
-import "./MarketManagementLib.sol";
+import "./1_StorageLib.sol";
+import "./4_SolvencyLib.sol";
+import "./3_HeapLib.sol";
+import "./2_MarketManagementLib.sol";
+import "./6_ResolutionLib.sol";
 
-library PositionTransferLib {
+library 7_PositionTransferLib {
 
 /*//////////////////////////////////////////////////////////////
                        EVENTS
@@ -35,10 +36,10 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         // H_k += amount  via tilt
-        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+        3_HeapLib.updateTilt(account, marketId, positionId, int256(amount));
 
         // If this made the account "over-collateralised" we can free some capital
-        SolvencyLib.deallocateExcess(account, marketId);
+        4_SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _receiveLay(
@@ -51,10 +52,10 @@ event PositionTransfer(
 
         // Lay received: layOffset += amount, tilt -= amount
         s.layOffset[account][marketId] += int256(amount);
-        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+        3_HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
 
         // Again, receiving exposure can relax the tightest constraint
-        SolvencyLib.deallocateExcess(account, marketId);
+        4_SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _emitBack(
@@ -64,10 +65,10 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         // Sending Back: H_k -= amount via tilt
-        HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
+        3_HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
 
         // Check we are still solvent after lowering H_k
-        SolvencyLib.ensureSolvency(account, marketId);
+        4_SolvencyLib.ensureSolvency(account, marketId);
     }
 
     function _emitLay(
@@ -80,10 +81,10 @@ event PositionTransfer(
 
         // Sending Lay: layOffset -= amount, tilt += amount
         s.layOffset[account][marketId] -= int256(amount);
-        HeapLib.updateTilt(account, marketId, positionId, int256(amount));
+        3_HeapLib.updateTilt(account, marketId, positionId, int256(amount));
 
         // Check we remain solvent after changing offsets
-        SolvencyLib.ensureSolvency(account, marketId);
+        4_SolvencyLib.ensureSolvency(account, marketId);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -100,7 +101,7 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         require(amount > 0, "zero amount");
-        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+        require(2_MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
         if (from != address(0)) {
             _emitBack(from, marketId, positionId, amount);
@@ -119,7 +120,7 @@ event PositionTransfer(
         uint256 amount
     ) internal {
         require(amount > 0, "zero amount");
-        require(MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
+        require(2_MarketManagementLib.positionExists(marketId, positionId), "Position !exists");
 
         if (from != address(0)) {
             _emitLay(from, marketId, positionId, amount);
@@ -132,6 +133,21 @@ event PositionTransfer(
     /*//////////////////////////////////////////////////////////////
                        GENERIC POSITION TRANSFER SWITCH
     //////////////////////////////////////////////////////////////*/
+
+    // _trackResolvingMarkets just helps us keep a list of all the resolving markets the user has touched 
+    // elsewhere we remove markets from this list that the user has claimed from
+    
+    function _trackResolvingMarkets(address user, uint256 marketId) internal {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    // dont store the market if it doesnt resolve
+    if(s.doesResolve[marketId]==false) return;
+    // check if its already stored if it is dont add it
+    if (s.userMarketIndex[user][marketId] != 0) return;
+
+    s.userMarkets[user].push(marketId);
+    // using 1 for raw index 0
+    s.userMarketIndex[user][marketId] = s.userMarkets[user].length;
+    }
 
     function transferPosition(
         address from,
@@ -146,7 +162,12 @@ event PositionTransfer(
         } else {
             transferLay(from, to, marketId, positionId, amount);
         }
-        emit PositionTransfer(from, to, marketId, positionId, isBack, amount);
+        //update the list of markets the to and from accounts have touched
+        // we need to update from because from might not actually have touched this market yet. This is because collateral essentially auto splits on transfer (if necessary)
+        _trackResolvingMarkets(from, marketId);
+        _trackResolvingMarkets(to, marketId); 
+        6_ResolutionLib._applyPendingWinnings(from);
+        6_ResolutionLib._applyPendingWinnings(to);
 
     }
 }

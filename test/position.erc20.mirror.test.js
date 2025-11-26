@@ -1,61 +1,25 @@
 // test/position.erc20.mirror.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-
-// 6-decimals helper
-const usdc = (n) => {
-  if (typeof n === "string") return BigInt(n) * 1_000_000n;
-  return BigInt(n) * 1_000_000n;
-};
+const { usdc, deployCore } = require("./helpers/core");
 
 describe("PositionERC20 mirrors + ISC seeding", function () {
-  let owner, trader, other;
-  let usdcToken;
-  let aUSDC;
-  let aavePool;
-  let ppUSDC;
-  let ledger;
+  let fx;        // { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger }
+  let other;     // extra signer for sanity checks
 
   beforeEach(async () => {
-    [owner, trader, other] = await ethers.getSigners();
-
-    // --- Deploy mocks ---
-    const MockUSDC = await ethers.getContractFactory("MockUSDC");
-    usdcToken = await MockUSDC.deploy();
-    await usdcToken.waitForDeployment();
-
-    const MockAUSDC = await ethers.getContractFactory("MockAUSDC");
-    aUSDC = await MockAUSDC.deploy();
-    await aUSDC.waitForDeployment();
-
-    const MockAavePool = await ethers.getContractFactory("MockAavePool");
-    aavePool = await MockAavePool.deploy(
-      await usdcToken.getAddress(),
-      await aUSDC.getAddress()
-    );
-    await aavePool.waitForDeployment();
-
-    const PpUSDC = await ethers.getContractFactory("PpUSDC");
-    ppUSDC = await PpUSDC.deploy();
-    await ppUSDC.waitForDeployment();
-
-    const MarketMakerLedger = await ethers.getContractFactory("MarketMakerLedger");
-    ledger = await MarketMakerLedger.deploy(
-      await usdcToken.getAddress(),
-      await aUSDC.getAddress(),
-      await aavePool.getAddress(),
-      "0x0000000000000000000000000000000000000000", // permit2 unused
-      await ppUSDC.getAddress()
-    );
-    await ledger.waitForDeployment();
-
-    // wire ppUSDC -> ledger
-    await ppUSDC.setLedger(await ledger.getAddress());
+    fx = await deployCore();
+    const signers = await ethers.getSigners();
+    // deployCore will have used [owner, trader, feeRecipient, ...]
+    // so we can safely treat index 3 as "other"
+    other = signers[3];
   });
 
   /// Helper: create a market with ISC seeded to `owner` as DMM,
   /// and one Back position with an ERC20 mirror.
   async function setupISCSeededPosition() {
+    const { ledger, owner } = fx;
+
     const iscAmount = usdc("100"); // 100 full sets synthetic line
 
     // allow owner as DMM for this market
@@ -76,38 +40,18 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
     expect(markets.length).to.equal(1);
     const marketId = markets[0];
 
-    // create one position (Back) with ERC20 mirror
-    const tx = await ledger.createPosition(
+    // create one position (Back) with ERC20 mirror via staticCall
+    const [positionId, tokenAddr] = await ledger.createPosition.staticCall(
       marketId,
       "Outcome A",
       "OA"
     );
-    const receipt = await tx.wait();
+    await ledger.createPosition(marketId, "Outcome A", "OA");
 
-    const iface = ledger.interface;
-    let tokenAddr;
-    let positionId;
-
-    for (const log of receipt.logs) {
-      try {
-        const parsed = iface.parseLog(log);
-        if (parsed.name === "PositionCreated") {
-          tokenAddr = parsed.args.token;
-          positionId = parsed.args.positionId;
-          break;
-        }
-      } catch (_) {
-        // ignore non-ledger logs
-      }
-    }
-
-    // Simple JS sanity checks to avoid BigInt vs null chai issues
-    if (!tokenAddr || positionId === undefined || positionId === null) {
-      throw new Error("PositionCreated event not found");
-    }
-
-    const PositionERC20 = await ethers.getContractFactory("PositionERC20");
-    const positionToken = PositionERC20.attach(tokenAddr);
+    const positionToken = await ethers.getContractAt(
+      "PositionERC20",
+      tokenAddr
+    );
 
     return { marketId, positionId, positionToken, iscAmount };
   }
@@ -116,9 +60,14 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
     const { marketId, positionId, positionToken, iscAmount } =
       await setupISCSeededPosition();
 
+    const { ledger, owner, trader } = fx;
+
     // Sanity check: market meta wired
     const [mName, mTicker] = await ledger.getMarketDetails(marketId);
-    const [pName, pTicker] = await ledger.getPositionDetails(marketId, positionId);
+    const [pName, pTicker] = await ledger.getPositionDetails(
+      marketId,
+      positionId
+    );
 
     expect(mName).to.equal("ISC Seeded Market");
     expect(mTicker).to.equal("ISM");
@@ -138,9 +87,9 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
     const traderBal = await positionToken.balanceOf(trader.address);
     const otherBal = await positionToken.balanceOf(other.address);
 
-    // totalSupply = marketValue + syntheticCollateral
+    // totalSupply = ISC line (no real capital yet)
     const mv = await ledger.getMarketValue(marketId);
-    expect(mv).to.equal(0n); // no real capital yet
+    expect(mv).to.equal(0n);
     expect(supply).to.equal(iscAmount);
 
     // all ISC-seeded shares live on the DMM (owner) by design
@@ -151,6 +100,7 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
 
   it("PositionERC20 transfers move balances but keep totalSupply constant", async function () {
     const { positionToken, iscAmount } = await setupISCSeededPosition();
+    const { owner, trader } = fx;
 
     const transferAmount = iscAmount / 4n; // 25% of ISC line
 
@@ -163,7 +113,9 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
     expect(traderBefore).to.equal(0n);
 
     // Transfer from DMM (owner) to trader
-    await positionToken.connect(owner).transfer(trader.address, transferAmount);
+    await positionToken
+      .connect(owner)
+      .transfer(trader.address, transferAmount);
 
     const supplyAfter = await positionToken.totalSupply();
     const ownerAfter = await positionToken.balanceOf(owner.address);

@@ -1,143 +1,63 @@
+// test/ledger.ppusdc.peertopeer.test.js
+
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { usdc, deployCore, mintAndDeposit } = require("./helpers/core");
 
 describe("MarketMakerLedger – peer-to-peer ppUSDC transfers", function () {
-  let owner, traderA, traderB, dmm;
-  let usdc, aUSDC, aavePool, ppUSDC, ledger, flatMM;
-  let marketId;
-
-  // ----------------- core deploy helper (matches your other tests) -----------------
-
-  async function deployCore() {
-    [owner, traderA, traderB, dmm] = await ethers.getSigners();
-
-    // --- deploy tokens & mocks ---
-    const MockUSDC = await ethers.getContractFactory("MockUSDC");
-    usdc = await MockUSDC.deploy();
-    await usdc.waitForDeployment();
-
-    const MockAUSDC = await ethers.getContractFactory("MockAUSDC");
-    aUSDC = await MockAUSDC.deploy();
-    await aUSDC.waitForDeployment();
-
-    const MockAavePool = await ethers.getContractFactory("MockAavePool");
-    aavePool = await MockAavePool.deploy(
-      await usdc.getAddress(),
-      await aUSDC.getAddress()
-    );
-    await aavePool.waitForDeployment();
-
-    const PpUSDC = await ethers.getContractFactory("PpUSDC");
-    ppUSDC = await PpUSDC.deploy(); // ledger wired later via setLedger
-    await ppUSDC.waitForDeployment();
-
-    const FlatMockMarketMaker = await ethers.getContractFactory("FlatMockMarketMaker");
-    flatMM = await FlatMockMarketMaker.deploy();
-    await flatMM.waitForDeployment();
-
-    const MarketMakerLedger = await ethers.getContractFactory("MarketMakerLedger");
-    ledger = await MarketMakerLedger.deploy(
-      await usdc.getAddress(),
-      await aUSDC.getAddress(),
-      await aavePool.getAddress(),
-      ethers.ZeroAddress,           // permit2 (unused in these tests)
-      await ppUSDC.getAddress()
-    );
-    await ledger.waitForDeployment();
-
-    // wire ppUSDC → ledger
-    await ppUSDC.setLedger(await ledger.getAddress());
-
-    // allow DMM
-    await ledger.allowDMM(await dmm.getAddress(), true);
-
-    // simple 2-way market
-    const tx = await ledger.createMarket(
-      "Test Market",
-      "TEST",
-      await dmm.getAddress(),
-      ethers.parseUnits("1000", 6),   // ISC amount
-      false,                          // doesResolve
-      ethers.ZeroAddress,             // oracle
-      "0x"                            // oracleParams
-    );
-    const rc = await tx.wait();
-    const ev = rc.logs.find(
-      (l) =>
-        l.fragment &&
-        l.fragment.name === "MarketCreated"
-    );
-    marketId = ev ? ev.args.marketId : 0n; // if you don't have this event, hardcode 0
-
-    // create one YES position so trading works if we ever need it
-    await ledger.createPosition(marketId, "YES", "YES");
-  }
+  let fx;
+  let owner, traderA, traderB;
+  let usdcToken, ppUSDC, ledger;
 
   beforeEach(async () => {
-    await deployCore();
+    // fx: { owner, trader, feeRecipient, other, usdc, aUSDC, aavePool, ppUSDC, ledger }
+    fx = await deployCore();
 
-    // Seed USDC to traders
-    const mintAmount = ethers.parseUnits("1000", 6);
-    await usdc.mint(await traderA.getAddress(), mintAmount);
-    await usdc.mint(await traderB.getAddress(), mintAmount);
-
-    // Approvals
-    await usdc.connect(traderA).approve(await ledger.getAddress(), mintAmount);
-    await usdc.connect(traderB).approve(await ledger.getAddress(), mintAmount);
+    owner     = fx.owner;
+    traderA   = fx.trader;        // first user
+    traderB   = fx.feeRecipient;  // second user
+    usdcToken = fx.usdc;
+    ppUSDC    = fx.ppUSDC;
+    ledger    = fx.ledger;
   });
-
-  // ----------------- helpers -----------------
-
-  async function depositFor(trader, amount) {
-    const EIP2612_EMPTY = {
-      owner: ethers.ZeroAddress,
-      spender: ethers.ZeroAddress,
-      value: 0,
-      deadline: 0,
-      v: 0,
-      r: ethers.ZeroHash,
-      s: ethers.ZeroHash,
-    };
-
-    await ledger
-      .connect(trader)
-      .deposit(
-        await trader.getAddress(),
-        amount,
-        0,                // minUSDCDeposited
-        0,                // mode = allowance
-        EIP2612_EMPTY,
-        "0x"              // permit2Calldata
-      );
-  }
 
   // ----------------- tests -----------------
 
   it("ppUSDC transfer moves realFreeCollateral between traders and preserves totals", async () => {
-    const amountA = ethers.parseUnits("500", 6);
-    const amountB = ethers.parseUnits("200", 6);
+    const amountA = usdc("500");
+    const amountB = usdc("200");
 
-    await depositFor(traderA, amountA);
-    await depositFor(traderB, amountB);
+    await mintAndDeposit({
+      usdc: usdcToken,
+      ledger,
+      trader: traderA,
+      amount: amountA,
+    });
 
-    const aAddr = await traderA.getAddress();
-    const bAddr = await traderB.getAddress();
+    await mintAndDeposit({
+      usdc: usdcToken,
+      ledger,
+      trader: traderB,
+      amount: amountB,
+    });
 
-    const beforeA = await ledger.realFreeCollateral(aAddr);
-    const beforeB = await ledger.realFreeCollateral(bAddr);
-    const beforeTotal = await ledger.realTotalFreeCollateral();
+    const aAddr = traderA.address;
+    const bAddr = traderB.address;
+
+    const beforeA      = await ledger.realFreeCollateral(aAddr);
+    const beforeB      = await ledger.realFreeCollateral(bAddr);
+    const beforeTotal  = await ledger.realTotalFreeCollateral();
 
     expect(beforeA).to.equal(amountA);
     expect(beforeB).to.equal(amountB);
     expect(beforeTotal).to.equal(amountA + amountB);
 
-    const transferAmount = ethers.parseUnits("123", 6);
+    const transferAmount = usdc("123");
 
     // P2P transfer via PpUSDC (which calls ppUSDCTransfer on the ledger)
     await ppUSDC.connect(traderA).transfer(bAddr, transferAmount);
 
-    const afterA = await ledger.realFreeCollateral(aAddr);
-    const afterB = await ledger.realFreeCollateral(bAddr);
+    const afterA     = await ledger.realFreeCollateral(aAddr);
+    const afterB     = await ledger.realFreeCollateral(bAddr);
     const afterTotal = await ledger.realTotalFreeCollateral();
 
     expect(afterA).to.equal(beforeA - transferAmount);
@@ -157,13 +77,19 @@ describe("MarketMakerLedger – peer-to-peer ppUSDC transfers", function () {
   });
 
   it("reverts ppUSDC transfer when sender doesn't have enough free collateral", async () => {
-    const amountA = ethers.parseUnits("100", 6);
-    await depositFor(traderA, amountA);
+    const amountA = usdc("100");
 
-    const aAddr = await traderA.getAddress();
-    const bAddr = await traderB.getAddress();
+    await mintAndDeposit({
+      usdc: usdcToken,
+      ledger,
+      trader: traderA,
+      amount: amountA,
+    });
 
+    const aAddr   = traderA.address;
+    const bAddr   = traderB.address;
     const balance = await ppUSDC.balanceOf(aAddr);
+
     expect(balance).to.equal(amountA);
 
     const tooMuch = amountA + 1n;
@@ -173,15 +99,26 @@ describe("MarketMakerLedger – peer-to-peer ppUSDC transfers", function () {
     ).to.be.revertedWith("Insufficient ppUSDC");
   });
 
-  it("ppUSDC transfer preserves solvency & redeemability in a simple market", async () => {
-    const amountA = ethers.parseUnits("500", 6);
-    const amountB = ethers.parseUnits("500", 6);
+  it("ppUSDC transfer preserves solvency & redeemability in a simple setup", async () => {
+    const amountA = usdc("500");
+    const amountB = usdc("500");
 
-    await depositFor(traderA, amountA);
-    await depositFor(traderB, amountB);
+    await mintAndDeposit({
+      usdc: usdcToken,
+      ledger,
+      trader: traderA,
+      amount: amountA,
+    });
 
-    const aAddr = await traderA.getAddress();
-    const bAddr = await traderB.getAddress();
+    await mintAndDeposit({
+      usdc: usdcToken,
+      ledger,
+      trader: traderB,
+      amount: amountB,
+    });
+
+    const aAddr = traderA.address;
+    const bAddr = traderB.address;
 
     // initial solvency
     const okA0 = await ledger.invariant_checkSolvencyAllMarkets(aAddr);
@@ -189,7 +126,7 @@ describe("MarketMakerLedger – peer-to-peer ppUSDC transfers", function () {
     expect(okA0).to.equal(true);
     expect(okB0).to.equal(true);
 
-    const transferAmount = ethers.parseUnits("250", 6);
+    const transferAmount = usdc("250");
     await ppUSDC.connect(traderA).transfer(bAddr, transferAmount);
 
     const okA1 = await ledger.invariant_checkSolvencyAllMarkets(aAddr);

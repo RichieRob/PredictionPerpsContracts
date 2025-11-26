@@ -56,7 +56,10 @@ describe("MarketMakerLedger – ERC20 mirrors under wallet flows", function () {
       "ERC20 Wallet Flow Market",
       "EWF",
       await flatMM.getAddress(),
-      ISC
+      ISC,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
     const markets = await ledger.getMarkets();
     marketId = markets[0];

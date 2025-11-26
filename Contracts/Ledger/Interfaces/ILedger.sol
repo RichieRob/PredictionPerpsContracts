@@ -55,7 +55,7 @@ interface ILedger {
     function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId);
     function getMarketValue(uint256 marketId) external view returns (uint256);
     function getTotalMarketsValue() external view returns (uint256);
-    function getTotalFreeCollateral() external view returns (uint256);
+    function realTotalFreeCollateral() external view returns (uint256);
     function getTotalValueLocked() external view returns (uint256);
     function getMarkets() external view returns (uint256[] memory);
     function getMarketPositions(uint256 marketId) external view returns (uint256[] memory);

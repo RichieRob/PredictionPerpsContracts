@@ -61,7 +61,10 @@ describe("MarketMakerLedger – wallet-based buys", function () {
       "Wallet Buy Test Market",
       "WALB",
       await flatMM.getAddress(),
-      ISC_LINE
+      ISC_LINE,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();
@@ -102,7 +105,7 @@ describe("MarketMakerLedger – wallet-based buys", function () {
 
     const walletBefore = await usdc.balanceOf(trader.address);
     const ppBefore     = await ppUSDC.balanceOf(trader.address);
-    const freeBefore   = await ledger.freeCollateralOf(trader.address);
+    const freeBefore   = await ledger.realFreeCollateral(trader.address);
     const [tvlBefore, aUSDCAfterBefore] = await ledger.invariant_tvl();
     expect(tvlBefore).to.equal(aUSDCAfterBefore);
 
@@ -121,7 +124,7 @@ describe("MarketMakerLedger – wallet-based buys", function () {
 
     const walletAfter = await usdc.balanceOf(trader.address);
     const ppAfter     = await ppUSDC.balanceOf(trader.address);
-    const freeAfter   = await ledger.freeCollateralOf(trader.address);
+    const freeAfter   = await ledger.realFreeCollateral(trader.address);
     const [tvlAfter, aUSDCAfter] = await ledger.invariant_tvl();
 
     // wallet spent some USDC
@@ -182,7 +185,7 @@ describe("MarketMakerLedger – wallet-based buys", function () {
     );
 
     const walletAfter = await usdc.balanceOf(trader.address);
-    const freeAfter   = await ledger.freeCollateralOf(trader.address);
+    const freeAfter   = await ledger.realFreeCollateral(trader.address);
     const [tvlAfter, aUSDCAfter] = await ledger.invariant_tvl();
 
     // wallet spent some USDC

@@ -58,7 +58,10 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
       "Solvency Test Market",
       "SOLV",
       await flatMM.getAddress(),
-      ISC_LINE
+      ISC_LINE,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();

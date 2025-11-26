@@ -47,7 +47,10 @@ describe("MarketMakerLedger – markets & positions", function () {
   it("creates a market and stores name/ticker", async () => {
     const iscAmount = 0;
 
-    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount);
+    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount,
+        false,
+        ethers.ZeroAddress,
+      "0x");
 
     const markets = await ledger.getMarkets();
     expect(markets.length).to.equal(1);
@@ -62,7 +65,10 @@ describe("MarketMakerLedger – markets & positions", function () {
   it("creates positions and ERC20 clones with proper metadata", async () => {
     const iscAmount = 0;
 
-    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount);
+    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount,
+        false,
+        ethers.ZeroAddress,
+      "0x");
     const markets = await ledger.getMarkets();
     const marketId = markets[0];
 
@@ -96,7 +102,10 @@ describe("MarketMakerLedger – markets & positions", function () {
     const iscAmount = 0;
 
     // create market
-    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount);
+    await ledger.createMarket("Premier League Winner", "EPL24", dmm.address, iscAmount,
+        false,
+        ethers.ZeroAddress,
+      "0x");
     const markets = await ledger.getMarkets();
     const marketId = markets[0];
 

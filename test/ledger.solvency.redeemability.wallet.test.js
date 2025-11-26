@@ -61,7 +61,10 @@ describe("MarketMakerLedger – redeemability with wallet flows", function () {
       "Redeemability Test Market",
       "REDM",
       await flatMM.getAddress(),
-      ISC_LINE
+      ISC_LINE,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();
@@ -246,7 +249,7 @@ describe("MarketMakerLedger – redeemability with wallet flows", function () {
       MAX_USDC_IN
     );
 
-    const TARGET_USDC_OUT = ethers.parseUnits("300", 6);
+    const TARGET_USDC_OUT = ethers.parseUnits("135", 6);
     const MAX_TOKENS_IN   = ethers.parseUnits("400", 6);
 
     const walletBefore = await usdc.balanceOf(trader.address);

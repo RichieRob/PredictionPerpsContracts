@@ -56,7 +56,10 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
       "Multi-User Test Market",
       "MUTI",
       await flatMM.getAddress(),
-      ISC
+      ISC,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
     const markets = await ledger.getMarkets();
     marketId = markets[0];
@@ -182,18 +185,18 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
 
     const tsPp = await ppUSDC.totalSupply();
 
-    const freeAlice  = await ledger.freeCollateralOf(alice.address);
-    const freeBob    = await ledger.freeCollateralOf(bob.address);
-    const freeDmm    = await ledger.freeCollateralOf(await flatMM.getAddress());
-    const freeOwner  = await ledger.freeCollateralOf(owner.address);
-    const freeLedger = await ledger.freeCollateralOf(await ledger.getAddress());
+    const freeAlice  = await ledger.realFreeCollateral(alice.address);
+    const freeBob    = await ledger.realFreeCollateral(bob.address);
+    const freeDmm    = await ledger.realFreeCollateral(await flatMM.getAddress());
+    const freeOwner  = await ledger.realFreeCollateral(owner.address);
+    const freeLedger = await ledger.realFreeCollateral(await ledger.getAddress());
 
     // owner/ledger shouldn't be phantom holders of ppUSDC in this scenario
     expect(freeOwner).to.equal(0n);
     expect(freeLedger).to.equal(0n);
 
     const totalFree = freeAlice + freeBob + freeDmm + freeOwner + freeLedger;
-    expect(totalFree).to.equal(await ledger.getTotalFreeCollateral());
+    expect(totalFree).to.equal(await ledger.realTotalFreeCollateral());
     expect(tsPp).to.equal(totalFree);
 
     // per-account ppUSDC mirrors freeCollateral

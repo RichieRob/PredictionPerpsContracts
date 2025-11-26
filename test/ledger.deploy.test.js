@@ -52,7 +52,7 @@ describe("MarketMakerLedger – deployment & basic deposit", () => {
     // Just basic sanity checks
     expect(await ppUSDC.ledger()).to.equal(await ledger.getAddress());
     expect(await ledger.getTotalValueLocked()).to.equal(0n);
-    expect(await ledger.getTotalFreeCollateral()).to.equal(0n);
+    expect(await ledger.realTotalFreeCollateral()).to.equal(0n);
   });
 
   it("allows a user to deposit USDC and updates TVL / ppUSDC mirror", async () => {
@@ -89,8 +89,8 @@ describe("MarketMakerLedger – deployment & basic deposit", () => {
       .to.emit(ledger, "Deposited");
 
     // 4) Check ledger accounting
-    const free = await ledger.freeCollateralOf(user.address);
-    const totalFree = await ledger.getTotalFreeCollateral();
+    const free = await ledger.realFreeCollateral(user.address);
+    const totalFree = await ledger.realTotalFreeCollateral();
     const tvl = await ledger.getTotalValueLocked();
     const aBal = await aUSDC.balanceOf(await ledger.getAddress());
     const poolUSDC = await usdc.balanceOf(await aavePool.getAddress());
@@ -146,8 +146,8 @@ describe("MarketMakerLedger – deployment & basic deposit", () => {
     )
       .to.emit(ledger, "Withdrawn");
 
-    const free = await ledger.freeCollateralOf(user.address);
-    const totalFree = await ledger.getTotalFreeCollateral();
+    const free = await ledger.realFreeCollateral(user.address);
+    const totalFree = await ledger.realTotalFreeCollateral();
     const tvl = await ledger.getTotalValueLocked();
     const userUSDC = await usdc.balanceOf(user.address);
 

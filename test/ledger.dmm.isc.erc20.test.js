@@ -59,7 +59,10 @@ describe("MarketMakerLedger – DMM ISC + ERC20 mirrors", function () {
       "DMM ISC Mirror Market",
       "DIMM",
       await flatMM.getAddress(),
-      ISC_LINE
+      ISC_LINE,
+      false,
+     ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();

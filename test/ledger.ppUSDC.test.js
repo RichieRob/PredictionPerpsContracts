@@ -68,8 +68,8 @@ describe("PpUSDC mirror behaviour", function () {
     const ts = await ppUSDC.totalSupply();
     const balAlice = await ppUSDC.balanceOf(alice.address);
 
-    const freeAlice = await ledger.freeCollateralOf(alice.address);
-    const totalFree = await ledger.totalFreeCollateral();
+    const freeAlice = await ledger.realFreeCollateral(alice.address);
+    const totalFree = await ledger.realTotalFreeCollateral();
     const tvl = await ledger.getTotalValueLocked();
 
     expect(ts).to.equal(DEPOSIT);
@@ -109,9 +109,9 @@ describe("PpUSDC mirror behaviour", function () {
     );
 
     // sanity pre-transfer
-    const preFreeAlice = await ledger.freeCollateralOf(alice.address);
-    const preFreeBob = await ledger.freeCollateralOf(bob.address);
-    const preTotalFree = await ledger.totalFreeCollateral();
+    const preFreeAlice = await ledger.realFreeCollateral(alice.address);
+    const preFreeBob = await ledger.realFreeCollateral(bob.address);
+    const preTotalFree = await ledger.realTotalFreeCollateral();
     const preTs = await ppUSDC.totalSupply();
 
     expect(preFreeAlice).to.equal(DEPOSIT);
@@ -122,9 +122,9 @@ describe("PpUSDC mirror behaviour", function () {
     // transfer ppUSDC from alice -> bob
     await ppUSDC.connect(alice).transfer(bob.address, TRANSFER);
 
-    const postFreeAlice = await ledger.freeCollateralOf(alice.address);
-    const postFreeBob = await ledger.freeCollateralOf(bob.address);
-    const postTotalFree = await ledger.totalFreeCollateral();
+    const postFreeAlice = await ledger.realFreeCollateral(alice.address);
+    const postFreeBob = await ledger.realFreeCollateral(bob.address);
+    const postTotalFree = await ledger.realTotalFreeCollateral();
     const postTs = await ppUSDC.totalSupply();
 
     const balAlice = await ppUSDC.balanceOf(alice.address);

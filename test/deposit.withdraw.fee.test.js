@@ -103,7 +103,7 @@ describe("MarketMakerLedger — deposit with protocol fee skim", function () {
 
     // --- Pre-state sanity ---
     expect(await ledger.getTotalValueLocked()).to.equal(0n);
-    expect(await ledger.getTotalFreeCollateral()).to.equal(0n);
+    expect(await ledger.realTotalFreeCollateral()).to.equal(0n);
     expect(await aUSDC.balanceOf(await ledger.getAddress())).to.equal(0n);
     expect(await aUSDC.balanceOf(feeRecipient.address)).to.equal(0n);
 
@@ -111,11 +111,11 @@ describe("MarketMakerLedger — deposit with protocol fee skim", function () {
     await depositFromTrader({ amount: DEPOSIT });
 
     // freeCollateral[trader] == NET
-    const free = await ledger.freeCollateralOf(trader.address);
+    const free = await ledger.realFreeCollateral(trader.address);
     expect(free).to.equal(NET);
 
     // totalFreeCollateral == NET
-    const totalFree = await ledger.getTotalFreeCollateral();
+    const totalFree = await ledger.realTotalFreeCollateral();
     expect(totalFree).to.equal(NET);
 
     // totalValueLocked == NET

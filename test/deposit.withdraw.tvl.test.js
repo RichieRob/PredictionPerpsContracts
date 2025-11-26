@@ -89,16 +89,16 @@ describe("MarketMakerLedger — deposits, withdrawals & TVL", function () {
       // pre-state
       expect(await ledger.getTotalValueLocked()).to.equal(0n);
       expect(await aUSDC.balanceOf(await ledger.getAddress())).to.equal(0n);
-      expect(await ledger.freeCollateralOf(trader.address)).to.equal(0n);
-      expect(await ledger.totalFreeCollateral()).to.equal(0n);
+      expect(await ledger.realFreeCollateral(trader.address)).to.equal(0n);
+      expect(await ledger.realTotalFreeCollateral()).to.equal(0n);
 
       const amount = usdc("100");
       await depositFromTrader({ amount });
 
       const tvl = await ledger.getTotalValueLocked();
       const aBal = await aUSDC.balanceOf(await ledger.getAddress());
-      const freeTrader = await ledger.freeCollateralOf(trader.address);
-      const totalFree = await ledger.totalFreeCollateral();
+      const freeTrader = await ledger.realFreeCollateral(trader.address);
+      const totalFree = await ledger.realTotalFreeCollateral();
 
       expect(tvl).to.equal(amount);
       expect(aBal).to.equal(amount);
@@ -126,8 +126,8 @@ describe("MarketMakerLedger — deposits, withdrawals & TVL", function () {
       const traderUSDCAfter = await usdcToken.balanceOf(trader.address);
       const tvl = await ledger.getTotalValueLocked();
       const aBal = await aUSDC.balanceOf(await ledger.getAddress());
-      const freeTrader = await ledger.freeCollateralOf(trader.address);
-      const totalFree = await ledger.totalFreeCollateral();
+      const freeTrader = await ledger.realFreeCollateral(trader.address);
+      const totalFree = await ledger.realTotalFreeCollateral();
       const ppBal = await ppUSDC.balanceOf(trader.address);
       const ppTotal = await ppUSDC.totalSupply();
 
@@ -172,8 +172,8 @@ describe("MarketMakerLedger — deposits, withdrawals & TVL", function () {
       const tvl = await ledger.getTotalValueLocked();
       const aBalLedger = await aUSDC.balanceOf(await ledger.getAddress());
       const aBalFee = await aUSDC.balanceOf(feeRecipient.address);
-      const freeTrader = await ledger.freeCollateralOf(trader.address);
-      const totalFree = await ledger.totalFreeCollateral();
+      const freeTrader = await ledger.realFreeCollateral(trader.address);
+      const totalFree = await ledger.realTotalFreeCollateral();
       const ppBal = await ppUSDC.balanceOf(trader.address);
       const ppTotal = await ppUSDC.totalSupply();
 

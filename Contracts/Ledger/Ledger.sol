@@ -5,23 +5,30 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Interfaces/ILedger.sol";
-import "./5_LedgerLibraries/1_StorageLib.sol";
-import "./5_LedgerLibraries/7_DepositWithdrawLib.sol";
-import "./5_LedgerLibraries/4_SolvencyLib.sol";
-import "./5_LedgerLibraries/3_HeapLib.sol";
-import "./5_LedgerLibraries/2_MarketManagementLib.sol";
-import "./5_LedgerLibraries/5_LedgerLib.sol";
-import "./5_LedgerLibraries/7_PositionTransferLib.sol";
-import "./5_LedgerLibraries/8_TradeExecutionLib.sol";
-import "./5_LedgerLibraries/2_ProtocolFeeLib.sol";
-import "./5_LedgerLibraries/5_LedgerInvariantViews.sol";
+
+import "./LedgerLibraries/0_Types.sol";
+import "./LedgerLibraries/0_TypesPermit.sol";
+
+import "./LedgerLibraries/1_StorageLib.sol";
+import "./LedgerLibraries/2_FreeCollateralLib.sol";
+import "./LedgerLibraries/2_MarketManagementLib.sol";
+import "./LedgerLibraries/2_ProtocolFeeLib.sol";
+import "./LedgerLibraries/2_IntentLib.sol";
+import "./LedgerLibraries/3_HeapLib.sol";
+import "./LedgerLibraries/4_SolvencyLib.sol";
+import "./LedgerLibraries/5_LedgerLib.sol";
+import "./LedgerLibraries/5_LedgerInvariantViews.sol";
+import "./LedgerLibraries/6_ResolutionLib.sol";
+import "./LedgerLibraries/7_DepositWithdrawLib.sol";
+import "./LedgerLibraries/7_PositionTransferLib.sol";
+import "./LedgerLibraries/8_TradeExecutionLib.sol";
+import "./LedgerLibraries/8_ERC20BridgeLib.sol";
+import "./LedgerLibraries/8_FillIntentLib.sol";
+import "./LedgerLibraries/9_TradeRouterLib.sol";
+
+
+
 import "./PositionERC20.sol";
-import "./5_LedgerLibraries/9_TradeRouterLib.sol";
-import "./5_LedgerLibraries/0_0_Types.sol";
-import "./5_LedgerLibraries/2_IntentLib.sol";
-import "./5_LedgerLibraries/8_ERC20BridgeLib.sol"; 
-import "./5_LedgerLibraries/T0_0_TypesPermit.sol";
-import "./5_LedgerLibraries/8_FillIntentLib.sol";
 
 
 
@@ -31,9 +38,9 @@ import "./5_LedgerLibraries/8_FillIntentLib.sol";
 
 
 contract MarketMakerLedger {
-    using 3_HeapLib for *;
-    using 2_MarketManagementLib for *;
-    using 5_LedgerLib for *;
+    using HeapLib for *;
+    using MarketManagementLib for *;
+    using LedgerLib for *;
 
     event Deposited(address indexed account, uint256 amount);
     event Withdrawn(address indexed account, uint256 amount);
@@ -44,7 +51,7 @@ contract MarketMakerLedger {
     event MarketMakerRegistered(address indexed mmAddress, address account);
     event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
     event DMMAllowed(address indexed account, bool allowed);
-    event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, 0_Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
+    event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
 
 
 
@@ -71,8 +78,8 @@ contract MarketMakerLedger {
  
 
     // --- market / position management  ---
-    function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount, bool doesResolve, address oracle, bytes calldata oraclePamas ) external onlyOwner returns (uint256 marketId) {
-        marketId = 2_MarketManagementLib.createMarket(name, ticker, dmm, iscAmount, doesResolve, oracle, oracleParams);
+    function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount, bool doesResolve, address oracle, bytes calldata oracleParams ) external onlyOwner returns (uint256 marketId) {
+        marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount, doesResolve, oracle, oracleParams);
     }
 
 function createPosition(
@@ -84,40 +91,40 @@ function createPosition(
     onlyOwner
     returns (uint256 positionId, address token)
 {
-    (positionId, token) = 2_MarketManagementLib.createPosition(
+    (positionId, token) = MarketManagementLib.createPosition(
         marketId,
         name,
         ticker
     );
 
     // Wire the cloned ERC20 to this market/position
-    8_ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
+    ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
 }
 
 
     function createPositions(
     uint256 marketId,
-    0_Types.PositionMeta[] memory positions
+    Types.PositionMeta[] memory positions
     ) external onlyOwner returns (uint256[] memory positionIds) {
     require(positions.length > 0, "No positions provided");
 
     positionIds = new uint256[](positions.length);
     for (uint256 i = 0; i < positions.length; i++) {
-        (uint256 positionId, address token) = 2_MarketManagementLib.createPosition(
+        (uint256 positionId, address token) = MarketManagementLib.createPosition(
             marketId,
             positions[i].name,
             positions[i].ticker
         );
 
     // Wire the cloned ERC20 to this market/position
-    8_ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
+    ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
         positionIds[i] = positionId;
      }
     }
 
     // --- owner finance ops ---
     function withdrawInterest() external onlyOwner {
-        7_DepositWithdrawLib.withdrawInterest(msg.sender);
+        DepositWithdrawLib.withdrawInterest(msg.sender);
     }
 
 
@@ -160,11 +167,11 @@ function getERC20PositionMeta(address token)
 
 
 function erc20TotalSupply(address token) external view returns (uint256) {
-    return 8_ERC20BridgeLib.erc20TotalSupply(token);
+    return ERC20BridgeLib.erc20TotalSupply(token);
 }
 
 function erc20BalanceOf(address token, address account) external view returns (uint256) {
-    return 8_ERC20BridgeLib.erc20BalanceOf(token, account);
+    return ERC20BridgeLib.erc20BalanceOf(token, account);
 }
 
 
@@ -180,8 +187,8 @@ function buyExactTokens(
     uint256 t,
     uint256 maxUSDCIn
 ) external {
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.BUY_EXACT_TOKENS,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_EXACT_TOKENS,
         msg.sender,
         mm,
         marketId,
@@ -200,8 +207,8 @@ function buyForppUSDC(
     uint256 usdcIn,
     uint256 minTokensOut
 ) external {
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.BUY_FOR_USDC,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_FOR_USDC,
         msg.sender,
         mm,
         marketId,
@@ -220,8 +227,8 @@ function sellExactTokens(
     uint256 t,
     uint256 minUSDCOut
 ) external {
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.SELL_EXACT_TOKENS,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_EXACT_TOKENS,
         msg.sender,
         mm,
         marketId,
@@ -240,8 +247,8 @@ function sellForppUSDC(
     uint256 usdcOut,
     uint256 maxTokensIn
 ) external {
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.SELL_FOR_USDC,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_FOR_USDC,
         msg.sender,
         mm,
         marketId,
@@ -263,13 +270,13 @@ function buyExactTokensWithUSDC(
     uint256 t,
     uint256 maxUSDCFromWallet,
     uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
-    0_TypesPermit.EIP2612Permit calldata eipPermit,
+    TypesPermit.EIP2612Permit calldata eipPermit,
     bytes  calldata permit2Calldata
 ) external {
     require(t > 0, "t=0");
 
     // 1) Deposit from wallet -> ledger realFreeCollateral for msg.sender
-    uint256 recorded = 7_DepositWithdrawLib.depositFromTraderUnified(
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
         msg.sender,           // ledger account credited
         msg.sender,           // trader paying USDC
         maxUSDCFromWallet,    // wallet amount we try to pull
@@ -280,8 +287,8 @@ function buyExactTokensWithUSDC(
     );
 
     // 2) Route via router (uses recorded as maxUSDCIn)
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.BUY_EXACT_TOKENS,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_EXACT_TOKENS,
         msg.sender,
         mm,
         marketId,
@@ -300,13 +307,13 @@ function buyForUSDCWithUSDC(
     uint256 usdcFromWallet,
     uint256 minTokensOut,
     uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
-    0_TypesPermit.EIP2612Permit calldata eipPermit,
+    TypesPermit.EIP2612Permit calldata eipPermit,
     bytes  calldata permit2Calldata
 ) external {
     require(usdcFromWallet > 0, "usdcIn=0");
 
     // 1) Deposit from wallet -> ledger realFreeCollateral
-    uint256 recorded = 7_DepositWithdrawLib.depositFromTraderUnified(
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
         msg.sender,          // ledger account credited
         msg.sender,          // trader paying USDC
         usdcFromWallet,
@@ -317,8 +324,8 @@ function buyForUSDCWithUSDC(
     );
 
     // 2) Route via router (recorded is actual usdcIn)
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.BUY_FOR_USDC,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.BUY_FOR_USDC,
         msg.sender,
         mm,
         marketId,
@@ -346,8 +353,8 @@ function sellExactTokensForUSDCToWallet(
     uint256 beforeFree = s.realFreeCollateral[msg.sender];
 
     // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.SELL_EXACT_TOKENS,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_EXACT_TOKENS,
         msg.sender,
         mm,
         marketId,
@@ -364,7 +371,7 @@ function sellExactTokensForUSDCToWallet(
     require(delta > 0, "no proceeds");
 
     // 3) Withdraw only that delta as real USDC to `to`
-    7_DepositWithdrawLib.withdrawWithoutClaims(msg.sender, delta, to);
+    DepositWithdrawLib.withdrawWithoutClaims(msg.sender, delta, to);
     emit Withdrawn(msg.sender, delta);
 }
 
@@ -386,8 +393,8 @@ function sellForUSDCToWallet(
     uint256 beforeFree = s.realFreeCollateral[msg.sender];
 
     // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router.
-    9_TradeRouterLib.tradeWithPPUSDC(
-        0_Types.TradeKind.SELL_FOR_USDC,
+    TradeRouterLib.tradeWithPPUSDC(
+        Types.TradeKind.SELL_FOR_USDC,
         msg.sender,
         mm,
         marketId,
@@ -406,7 +413,7 @@ function sellForUSDCToWallet(
     require(delta >= usdcOut, "sellForUSDC: insufficient net proceeds");
 
     // 4) Withdraw exactly usdcOut to wallet
-    7_DepositWithdrawLib.withdrawWithoutClaims(msg.sender, usdcOut, to);
+    DepositWithdrawLib.withdrawWithoutClaims(msg.sender, usdcOut, to);
     emit Withdrawn(msg.sender, usdcOut);
 }
 
@@ -418,18 +425,18 @@ function sellForUSDCToWallet(
 
     function getPositionLiquidity(address account, uint256 marketId, uint256 positionId)
         external view
-        returns (uint256 realFreeCollateral, int256 marketExposure, int256 tilt, uint256 amountOfISCForThisAccountAndMarket)
+        returns (uint256 _realFreeCollateral, int256 marketExposure, int256 tilt, uint256 amountOfISCForThisAccountAndMarket)
     {
-        return 5_LedgerLib.getPositionLiquidity(account, marketId, positionId);
+        return LedgerLib.getPositionLiquidity(account, marketId, positionId);
     }
 
 
     function getMinTilt(address account, uint256 marketId) external view returns (int256 minTilt, uint256 minPositionId) {
-        return 5_LedgerLib.getMinTilt(account, marketId);
+        return LedgerLib.getMinTilt(account, marketId);
     }
 
     function getMaxTilt(address account, uint256 marketId) external view returns (int256 maxTilt, uint256 maxPositionId) {
-        return 5_LedgerLib.getMaxTilt(account, marketId);
+        return LedgerLib.getMaxTilt(account, marketId);
     }
 
     function getMarketValue(uint256 marketId) external view returns (uint256) {
@@ -450,10 +457,10 @@ function sellForUSDCToWallet(
         return StorageLib.getStorage().totalValueLocked;
     }
     function getMarkets() external view returns (uint256[] memory) {
-        return 2_MarketManagementLib.getMarkets();
+        return MarketManagementLib.getMarkets();
     }
     function getMarketPositions(uint256 marketId) external view returns (uint256[] memory) {
-        return 2_MarketManagementLib.getMarketPositions(marketId);
+        return MarketManagementLib.getMarketPositions(marketId);
     }
  
  function getMarketDetails(uint256 marketId)
@@ -491,18 +498,18 @@ function getPositionDetails(uint256 marketId, uint256 positionId)
     //////////////////////////////////////////////////////////////*/
 
     function setFeeConfig(address recipient, uint16 bps, bool enabled) external onlyOwner {
-    2_ProtocolFeeLib.setFeeConfig(recipient, bps, enabled);
+    ProtocolFeeLib.setFeeConfig(recipient, bps, enabled);
 }
 
 
 // ppUSDC views
 
 function effectiveFreeCollateral(address account) external view returns (uint256) {
-    return 6_ResolutionLib.effectiveFreeCollateral(account);
+    return ResolutionLib.effectiveFreeCollateral(account);
 }
 
 function realFreeCollateral(address account) external view returns (uint256) {
-    return 6_ResolutionLib.realFreeCollateral(account);
+    return ResolutionLib.realFreeCollateral(account);
 }
 
 // this one is gonna be interesting... need to think about how this updates, currently doesn include any of the uclaimed..
@@ -511,11 +518,11 @@ function realTotalFreeCollateral() external view returns (uint256) {
 }
 
 function claimAllPendingWinnings() external {
-    6_ResolutionLib._applyPendingWinnings(msg.sender);
+    ResolutionLib._applyPendingWinnings(msg.sender);
 }
 
 function batchClaimWinnings(address account, uint256[] calldata marketIds) external {
-    6_ResolutionLib._batchClaimWinnings(account, marketIds);
+    ResolutionLib._batchClaimWinnings(account, marketIds);
 }
 
 
@@ -524,8 +531,10 @@ function ppUSDCTransfer(address from, address to, uint256 amount) external {
     StorageLib.Storage storage s = StorageLib.getStorage();
     require(msg.sender == address(s.ppUSDC), "Only ppUSDC");
 
+    //Pull all winnings to the user before transfering it
+    ResolutionLib._applyPendingWinnings(from);
     // ↓ bookkeeping: move freeCollateral between accounts
-    require(s.freeCollateral[from] >= amount, "Insufficient ppUSDC");
+    require(s.realFreeCollateral[from] >= amount, "Insufficient ppUSDC");
     s.realFreeCollateral[from] -= amount;
     s.realFreeCollateral[to]   += amount;
 
@@ -544,10 +553,10 @@ function deposit(
     uint256 amount,
     uint256 minUSDCDeposited,
     uint8   mode,
-    0_TypesPermit.EIP2612Permit calldata eipPermit,   // only used if mode==1
+    TypesPermit.EIP2612Permit calldata eipPermit,   // only used if mode==1
     bytes  calldata permit2Calldata                 // only used if mode==2
 ) external {
-    uint256 recorded = 7_DepositWithdrawLib.depositFromTraderUnified(
+    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
         to,        // ledger account credited
         msg.sender,        // trader paying USDC
         amount,
@@ -561,7 +570,7 @@ function deposit(
 }
 
 function withdraw(uint256 amount, address to) external {
-    7_DepositWithdrawLib.withdrawWithClaims(msg.sender, amount, to);
+    DepositWithdrawLib.withdrawWithClaims(msg.sender, amount, to);
     emit Withdrawn(msg.sender, amount);
 }
 
@@ -572,7 +581,7 @@ function positionERC20Transfer(
     address to,
     uint256 amount
 ) external {
-    8_ERC20BridgeLib.erc20PositionTransfer(msg.sender, from, to, amount);
+    ERC20BridgeLib.erc20PositionTransfer(msg.sender, from, to, amount);
 }
 
 //ERC20 Names
@@ -603,20 +612,20 @@ function erc20Symbol(uint256 marketId, uint256 positionId)
 
 
 
-function cancelIntent(0_Types.Intent calldata intent) external {
+function cancelIntent(Types.Intent calldata intent) external {
     // tx sender must be the trader
     require(intent.trader == msg.sender, "not trader");
-    2_IntentLib.cancelIntent(intent);
+    IntentLib.cancelIntent(intent);
 }
 
 function fillIntent(
-    0_Types.Intent calldata intent,
+    Types.Intent calldata intent,
     bytes calldata signature,
     uint256 fillPrimary,  // tokens
     uint256 fillQuote     // ppUSDC / USDC
 ) external {
-    // Filler is msg.sender; 8_FillIntentLib will use that.
-    8_FillIntentLib._fillIntent(intent, signature, fillPrimary, fillQuote);
+    // Filler is msg.sender; FillIntentLib will use that.
+    FillIntentLib._fillIntent(intent, signature, fillPrimary, fillQuote);
             emit IntentFilled(
             msg.sender,
             intent.trader,
@@ -642,7 +651,7 @@ function invariant_marketAccounting(uint256 marketId)
     view
     returns (uint256 lhs, uint256 rhs)
 {
-    return 5_LedgerInvariantViews.marketAccounting(marketId);
+    return LedgerInvariantViews.marketAccounting(marketId);
 }
 
 function invariant_iscWithinLine(uint256 marketId)
@@ -651,7 +660,7 @@ function invariant_iscWithinLine(uint256 marketId)
     returns (uint256 used, uint256 line)
 {
     StorageLib.Storage storage s = StorageLib.getStorage();
-    used = 5_LedgerInvariantViews.iscSpent(marketId);
+    used = LedgerInvariantViews.iscSpent(marketId);
     line = s.syntheticCollateral[marketId];
 }
 
@@ -660,7 +669,7 @@ function invariant_effectiveMin(address account, uint256 marketId)
     view
     returns (int256 effMin)
 {
-    return 5_LedgerInvariantViews.effectiveMinShares(account, marketId);
+    return LedgerInvariantViews.effectiveMinShares(account, marketId);
 }
 
 function invariant_systemFunding(uint256 marketId)
@@ -668,7 +677,7 @@ function invariant_systemFunding(uint256 marketId)
     view
     returns (uint256 fullSetsSystem)
 {
-    return 5_LedgerInvariantViews.totalFullSets(marketId);
+    return LedgerInvariantViews.totalFullSets(marketId);
 }
 
 function invariant_tvl()
@@ -676,7 +685,7 @@ function invariant_tvl()
     view
     returns (uint256 tvl, uint256 aUSDCBalance)
 {
-    return 5_LedgerInvariantViews.tvlAccounting();
+    return LedgerInvariantViews.tvlAccounting();
 }
 
 function invariant_systemBalance()
@@ -684,7 +693,7 @@ function invariant_systemBalance()
     view
     returns (uint256 lhs, uint256 rhs)
 {
-    return 5_LedgerInvariantViews.systemBalance();
+    return LedgerInvariantViews.systemBalance();
 }
 
 function invariant_checkSolvencyAllMarkets(address account)
@@ -692,7 +701,7 @@ function invariant_checkSolvencyAllMarkets(address account)
     view
     returns (bool ok)
 {
-    return 5_LedgerInvariantViews.checkSolvencyAllMarkets(account);
+    return LedgerInvariantViews.checkSolvencyAllMarkets(account);
 }
 
 function invariant_redeemabilityState(address account, uint256 marketId)
@@ -700,7 +709,7 @@ function invariant_redeemabilityState(address account, uint256 marketId)
     view
     returns (int256 netAlloc, int256 redeemable, int256 margin)
 {
-    return 5_LedgerInvariantViews.redeemabilityState( account, marketId);
+    return LedgerInvariantViews.redeemabilityState( account, marketId);
 }
 
 }

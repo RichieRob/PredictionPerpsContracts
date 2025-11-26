@@ -91,8 +91,8 @@ describe("PpUSDC mirror behaviour", function () {
 
     await depositFromTrader({ amount: DEPOSIT });
 
-    const free = await ledger.freeCollateralOf(trader.address);
-    const totalFree = await ledger.getTotalFreeCollateral();
+    const free = await ledger.realFreeCollateral(trader.address);
+    const totalFree = await ledger.realTotalFreeCollateral();
 
     expect(free).to.equal(DEPOSIT);
     expect(totalFree).to.equal(DEPOSIT);
@@ -112,9 +112,9 @@ describe("PpUSDC mirror behaviour", function () {
     const half = DEPOSIT / 2n;
 
     // Pre state
-    expect(await ledger.freeCollateralOf(trader.address)).to.equal(DEPOSIT);
-    expect(await ledger.freeCollateralOf(other.address)).to.equal(0n);
-    expect(await ledger.getTotalFreeCollateral()).to.equal(DEPOSIT);
+    expect(await ledger.realFreeCollateral(trader.address)).to.equal(DEPOSIT);
+    expect(await ledger.realFreeCollateral(other.address)).to.equal(0n);
+    expect(await ledger.realTotalFreeCollateral()).to.equal(DEPOSIT);
 
     expect(await ppUSDC.balanceOf(trader.address)).to.equal(DEPOSIT);
     expect(await ppUSDC.balanceOf(other.address)).to.equal(0n);
@@ -123,9 +123,9 @@ describe("PpUSDC mirror behaviour", function () {
     await ppUSDC.connect(trader).transfer(other.address, half);
 
     // Ledger bookkeeping
-    const traderFree = await ledger.freeCollateralOf(trader.address);
-    const otherFree = await ledger.freeCollateralOf(other.address);
-    const totalFree = await ledger.getTotalFreeCollateral();
+    const traderFree = await ledger.realFreeCollateral(trader.address);
+    const otherFree = await ledger.realFreeCollateral(other.address);
+    const totalFree = await ledger.realTotalFreeCollateral();
 
     expect(traderFree).to.equal(DEPOSIT - half);
     expect(otherFree).to.equal(half);

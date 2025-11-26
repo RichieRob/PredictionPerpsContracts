@@ -51,14 +51,17 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
 
     // 🔹 Allow it as DMM
     await ledger.allowDMM(await flatMM.getAddress(), true);
-
+    
     // 🔹 Give market an ISC line (pure synthetic)
     const iscAmount = ethers.parseUnits("100000", 6); // 100k synthetic
     await ledger.createMarket(
       "Test Market",
       "TEST",
       await flatMM.getAddress(),
-      iscAmount
+      iscAmount,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();
@@ -113,7 +116,7 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     );
 
     // sanity check: freeCollateral down
-    const free = await ledger.freeCollateralOf(trader.address);
+    const free = await ledger.realFreeCollateral(trader.address);
     expect(free).to.be.lt(TRADER_DEPOSIT);
 
     // Just make sure the view doesn’t revert
@@ -157,7 +160,7 @@ describe("MarketMakerLedger – simple trading smoke test", function () {
     );
   
     // --- 3) Basic sanity: trader lost some freeCollateral ---
-    const traderFree = await ledger.freeCollateralOf(trader.address);
+    const traderFree = await ledger.realFreeCollateral(trader.address);
     expect(traderFree).to.be.lt(TRADER_DEPOSIT);
   
     // --- 4) ISC invariant: used ISC within the line ---

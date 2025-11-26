@@ -66,7 +66,10 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
       "ISC Seeded Market",
       "ISM",
       owner.address, // DMM account
-      iscAmount
+      iscAmount,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();

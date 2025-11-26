@@ -58,13 +58,12 @@ library DepositWithdrawLib {
         // 5. Track TVL principal
         s.totalValueLocked += recordedAmount;
 
-        //apply winnings we can process both from and to
-        ResolutionLib._applyPendingWinnings(to);
-        if(from == to){
-            return;
-        } else {
-        ResolutionLib._applyPendingWinnings(from);
-        }
+     // apply winnings; process `to` always, and `from` only if distinct & non-zero
+    ResolutionLib._applyPendingWinnings(to);
+    if (from != address(0) && from != to) {
+    ResolutionLib._applyPendingWinnings(from);
+}
+
     }
 
     /// @notice Simple direct deposit from msg.sender → msg.sender with no min.

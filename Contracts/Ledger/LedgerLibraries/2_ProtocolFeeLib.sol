@@ -24,7 +24,7 @@ library ProtocolFeeLib {
         if (!s.feeEnabled || s.feeRecipient == address(0) || s.feeBps == 0) {
             return aReceived;
         }
-        uint256 feeA = (aReceived * s.feeBps) / 000;
+        uint256 feeA = (aReceived * s.feeBps) / 10000;
         if (feeA == 0) return aReceived;
 
         // transfer aUSDC fee to recipient (continues earning yield)

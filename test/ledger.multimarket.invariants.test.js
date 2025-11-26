@@ -66,7 +66,10 @@ describe("MarketMakerLedger – multi-market invariants", function () {
       "MultiMarket One",
       "MM1",
       await flatMM.getAddress(),
-      ISC_LINE_1
+      ISC_LINE_1,
+      false,
+      ethers.ZeroAddress,
+      "0x",
     );
 
     // Market 2
@@ -74,7 +77,10 @@ describe("MarketMakerLedger – multi-market invariants", function () {
       "MultiMarket Two",
       "MM2",
       await flatMM.getAddress(),
-      ISC_LINE_2
+      ISC_LINE_2,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();

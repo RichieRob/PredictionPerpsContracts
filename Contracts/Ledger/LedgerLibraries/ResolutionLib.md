@@ -6,7 +6,7 @@ Key principles:
 No iteration on resolution: resolveMarket only flips flags—no user loops.
 Auto-claim on first touch: Winnings are minted to ppUSDC when users interact (withdraw, trade, transfer).
 User-specific market list: Each user has a personal list of markets they've touched, which shrinks as markets resolve.
-View loop for accuracy: freeCollateralOf (ppUSDC.balanceOf) includes pending winnings with a small loop (shrinks over time).
+View loop for accuracy: realFreeCollateral (ppUSDC.balanceOf) includes pending winnings with a small loop (shrinks over time).
 Fail-safe for power users: Batch claim and no-claims transfer/withdraw to handle rare high-loop cases.
 ppUSDC balance correct instantly: After first touch, it's O(1); before, the view adds pending winnings.
 
@@ -92,9 +92,9 @@ Integration: Call at top of withdraw, buy, sell, deposit, and PpUSDC transfer/tr
 Gas: Proportional to user's markets (e.g., 50 markets = ~100k). Shrinks list over time.
 Handles ISC/DMM: Add if (2_MarketManagementLib.isDMM(user, marketId)) totalWinnings += s.syntheticCollateral[marketId]; in the exposure block if needed.
 
-4. freeCollateralOf (View for ppUSDC.balanceOf)
+4. realFreeCollateral (View for ppUSDC.balanceOf)
 Always-correct balance, including pending winnings. Loop is view-only (free for callers).
-solidityfunction freeCollateralOf(address account) external view returns (uint256) {
+solidityfunction realFreeCollateral(address account) external view returns (uint256) {
     StorageLib.Storage storage s = StorageLib.getStorage();
     uint256 base = realFreeCollateral[account];
     uint256[] memory markets = s.userMarkets[account];

@@ -71,7 +71,10 @@ describe("MarketMakerLedger – USDC trade paths", function () {
       "USDC Trade Market",
       "UTM",
       await mm.getAddress(),
-      0n
+      0n,
+      false,
+      ethers.ZeroAddress,
+      "0x"
     );
 
     const markets = await ledger.getMarkets();

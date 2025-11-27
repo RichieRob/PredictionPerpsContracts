@@ -194,6 +194,10 @@ mapping(address => bool)    erc20Registered;  // token => has mapping
 mapping(address => uint256) erc20MarketId;    // token => marketId
 mapping(address => uint256) erc20PositionId;  // token => positionId
 
+// 🔁 reverse lookup: (marketId, positionId) -> back-position ERC20 token
+mapping(uint256 => mapping(uint256 => address)) positionERC20; 
+// marketId => positionId => token
+
 
 mapping(bytes32 => IntentState) intentStates;
 // key = IntentLib.hashIntent(intent)

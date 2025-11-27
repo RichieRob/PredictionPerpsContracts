@@ -7,7 +7,7 @@ contract MockOracle is IOracle {
     bool public resolved;
     uint256 public winner;
 
-    function pushResolution(uint256 _winner) external {
+    function pushResolution(uint256 marketId, uint256 _winner) external {
         resolved = true;
         winner = _winner;
     }

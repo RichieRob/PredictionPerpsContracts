@@ -97,7 +97,7 @@ library SolvencyLib {
         return realMinShares + int256(isc);
     }
 
-    /// @notice Best-case number of full sets the account can redeem from this market.
+    /// @notice Best-case number of full sets an account can redeem from this market.
     /// @dev
     ///   - maxTilt = the *maximum* tilt across positions (most favourable leg)
     ///   - layOffset = net Lay flow

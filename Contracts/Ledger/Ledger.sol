@@ -164,6 +164,14 @@ function getERC20PositionMeta(address token)
     marketTicker   = s.marketTickers[marketId];
 }
 
+function getPositionERC20(
+    uint256 marketId,
+    uint256 positionId
+) external view returns (address) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        return s.positionERC20[marketId][positionId];
+}
+
 
 
 

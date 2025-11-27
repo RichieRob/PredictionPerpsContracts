@@ -31,6 +31,7 @@ library ERC20BridgeLib {
         s.erc20Registered[token] = true;
         s.erc20MarketId[token]   = marketId;
         s.erc20PositionId[token] = positionId;
+        s.positionERC20[marketId][positionId] = token;
 
         emit PositionERC20Registered(token, marketId, positionId);
     }
@@ -89,31 +90,40 @@ library ERC20BridgeLib {
 
         uint256 marketId = s.erc20MarketId[token];
 
+        if (s.marketResolved[marketId]) {
+        return 0;
+        }
+
         uint256 mv  = s.marketValue[marketId];
-        uint256 isc = s.syntheticCollateral[marketId]; // full ISC line
+        uint256 isc = s.syntheticCollateral[marketId]; // full ISC line - its always 0 for resolving markets
 
         return mv + isc;
     }
 
     /// @notice ERC20 balanceOf as "available shares" for a Back position,
     ///         clamped at 0. Includes ISC for the DMM automatically.
-    function erc20BalanceOf(address token, address account)
-        internal
-        view
-        returns (uint256)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
+function erc20BalanceOf(address token, address account)
+    internal
+    view
+    returns (uint256)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
-        uint256 marketId   = s.erc20MarketId[token];
-        uint256 positionId = s.erc20PositionId[token];
+    uint256 marketId   = s.erc20MarketId[token];
+    uint256 positionId = s.erc20PositionId[token];
 
-
-         //ISC balance included in getFullCapacityShares for DMM
-        int256 avail = LedgerLib.getCreatedShares(account, marketId, positionId);
-
-
-        if (avail <= 0) return 0;
-        return uint256(avail);
+    // 🔒 After resolution, ERC20 views for this market should show zero.
+    if (s.marketResolved[marketId]) {
+        return 0;
     }
+
+    // ISC balance included in getFullCapacityShares for DMM
+    int256 avail = LedgerLib.getCreatedShares(account, marketId, positionId);
+
+    if (avail <= 0) return 0;
+    return uint256(avail);
+}
+
+
 }

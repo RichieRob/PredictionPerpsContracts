@@ -53,7 +53,7 @@ describe("MarketMakerLedger – Oracle driven resolution", () => {
   it("resolves via oracle + trader claims winnings + invariants ok", async () => {
 
     // ORACLE PUSHES RESULTS
-    await oracle.pushResolution(posA);
+    await oracle.pushResolution(marketId,posA);
 
     // LEDGER QUERIES ORACLE & RESOLVES
     await fx.ledger["resolveMarket(uint256)"](marketId);

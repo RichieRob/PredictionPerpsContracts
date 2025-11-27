@@ -157,6 +157,9 @@ event PositionTransfer(
         bool isBack,
         uint256 amount
     ) internal {
+
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        require(!s.marketResolved[marketId], "Market resolved");
         if (isBack) {
             transferBack(from, to, marketId, positionId, amount);
         } else {

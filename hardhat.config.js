@@ -13,7 +13,7 @@ module.exports = {
     },
   },
   paths: {
-    sources: "./Contracts/Ledger",
+    sources: "./Contracts",
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",

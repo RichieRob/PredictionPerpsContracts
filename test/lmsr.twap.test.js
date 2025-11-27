@@ -175,4 +175,120 @@ describe("LMSRMarketMaker – TWAP", () => {
         .twapConsultFromCheckpoints(cum, ts, cum, ts)
     ).to.be.revertedWith("LMSR: bad TWAP window");
   });
+
+  it("TWAP matches manual piecewise-constant price integral", async () => {
+    const { amm, marketId, posA, owner } = fx;
+
+    // Make trades big enough to move price materially
+    const tradeSize = usdc(1_000);   // 1000 units
+    const maxIn     = usdc(1_000_000);
+
+    // --- 1) Kick TWAP into the normal regime with an initial trade ---
+
+    await amm
+      .connect(owner)
+      .applyBuyExactTokens(
+        marketId,
+        posA,
+        true,       // isBack
+        tradeSize,
+        maxIn
+      );
+
+    // Start checkpoint *after* first trade so lastTs != 0 and cumStart is sane
+    const [cumStart, tStart] = await amm.twapCurrentCumulative(marketId, posA);
+
+    // --- 2) Build a few long time segments with trades in between ---
+
+    const segments = [];
+
+    // Helper: record current BACK price, then advance time by dt
+    async function addSegment(dtSeconds) {
+      const price = await amm.getBackPriceWad(marketId, posA); // BigInt [0, 1e18)
+      await increaseTime(dtSeconds);
+      segments.push({
+        dt: BigInt(dtSeconds),
+        price, // BigInt
+      });
+    }
+
+    // Use long durations so timestamp drift is negligible in percentage terms
+    const DT1 = 1_000;
+    const DT2 = 2_000;
+    const DT3 = 3_000;
+
+    // Segment 1: hold price after trade #1 for DT1
+    await addSegment(DT1);
+
+    // Trade #2
+    await amm
+      .connect(owner)
+      .applyBuyExactTokens(
+        marketId,
+        posA,
+        true,
+        tradeSize,
+        maxIn
+      );
+
+    // Segment 2: hold price after trade #2 for DT2
+    await addSegment(DT2);
+
+    // Trade #3
+    await amm
+      .connect(owner)
+      .applyBuyExactTokens(
+        marketId,
+        posA,
+        true,
+        tradeSize,
+        maxIn
+      );
+
+    // Segment 3: hold price after trade #3 for DT3
+    await addSegment(DT3);
+
+    // --- 3) Final checkpoint + on-chain TWAP ---
+
+    const [cumEnd, tEnd] = await amm.twapCurrentCumulative(marketId, posA);
+
+    const dtTotal = tEnd - tStart; // BigInt
+    expect(dtTotal).to.be.gt(0n);
+
+    // Intended total duration
+    let manualDen = 0n;
+    for (const seg of segments) {
+      manualDen += seg.dt;
+    }
+
+    // Allow small drift from extra mined blocks / timestamp increments
+    const drift = dtTotal > manualDen ? dtTotal - manualDen : manualDen - dtTotal;
+    expect(drift).to.be.lte(5n); // 5s drift over 6000s total is <0.1%
+
+    const dCum = cumEnd - cumStart;
+
+    // Compute WAD-scaled avg in one go: avgWad = dCum * WAD / dtTotal
+    const onchainAvgWad = (dCum * WAD) / dtTotal;
+
+    // --- 4) Manual TWAP: Σ p_i * dt_i / Σ dt_i ---
+
+    let manualNum = 0n;
+    for (const seg of segments) {
+      manualNum += seg.price * seg.dt; // price is WAD, dt is seconds
+    }
+    const manualAvgWad = manualNum / manualDen;
+
+    // --- 5) Compare on-chain vs manual within a small tolerance ---
+
+    const diff = onchainAvgWad > manualAvgWad
+      ? onchainAvgWad - manualAvgWad
+      : manualAvgWad - onchainAvgWad;
+
+    // With long durations, drift-induced error should be well under 0.1%
+    const tolerance = manualAvgWad / 1_000n + 1n; // ~0.1% + 1 wei
+
+    expect(diff).to.be.lte(tolerance);
+  });
+
+  
 });

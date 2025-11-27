@@ -1,26 +1,31 @@
-
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import { PRBMathSD59x18 } from "@prb/math/PRBMathSD59x18.sol";
+import { SD59x18, sd } from "@prb/math/src/SD59x18.sol";
 
 /// @title LMSRMathLib
-/// @notice Library for common math helpers used in LMSRMarketMaker.
+/// @notice Common math helpers used in LMSRMarketMaker.
 library LMSRMathLib {
-    using PRBMathSD59x18 for int256;
-
     uint256 internal constant WAD = 1e18;
 
-    /// @dev returns e^{x/b} where x is 1e6, result 1e18
+    /// @dev exp(x / b) where x and b are 1e6-scaled “USDC units”.
+    ///      Result is 1e18 WAD.
     function expRatioOverB(int256 b, int256 x) internal pure returns (int256 eWad) {
-        int256 xWad = (x * int256(WAD)) / b;      // x/b in 1e18
-        eWad = PRBMathSD59x18.exp(xWad);          // 1e18
+        // x/b in 1e18
+        int256 xWad = (x * int256(WAD)) / b;
+        // Wrap into SD59x18, exponentiate, unwrap back to raw int256 (1e18)
+        eWad = sd(xWad).exp().unwrap();
     }
 
-    /// @dev (a * b) / 1e18
+    /// @dev Natural log on a WAD value. Input and output both 1e18-scaled.
+    function lnWad(int256 wad) internal pure returns (int256) {
+        // Safety: avoid ln(0)
+        require(wad > 0, "ln domain");
+        return sd(wad).ln().unwrap();
+    }
+
+    /// @dev (a * b_) / 1e18
     function wmul(int256 a, int256 b_) internal pure returns (int256) {
         return (a * b_) / int256(WAD);
     }
 }
-

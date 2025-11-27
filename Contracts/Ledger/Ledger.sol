@@ -172,6 +172,14 @@ function getPositionERC20(
         return s.positionERC20[marketId][positionId];
 }
 
+function positionExists(
+    uint256 marketId,
+    uint256 positionId
+) external view returns (bool) {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    
+    return s.positionERC20[marketId][positionId] != address(0);
+}
 
 
 

@@ -1,163 +1,142 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import { PRBMathSD59x18 } from "@prb/math/PRBMathSD59x18.sol";
-import "../LMSRMarketMaker.sol";
+import { SD59x18, sd } from "@prb/math/src/SD59x18.sol";
+import "./LMSRStorageLib.sol";
 import "./LMSRMathLib.sol";
-import "./LMSRHelpersLib.sol";
 
 /// @title LMSRQuoteLib
 /// @notice Pure LMSR pricing formulas (BACK + LAY) using closed-form expressions.
 ///
-/// ## SCALING OVERVIEW
-/// - All quantities that represent *real numbers* such as probabilities,
-///   exponentials, and ln/exp inputs **must be 1e18-scaled (WAD)**.
-///   This is because PRBMathSD59x18 expects fixed-point 59x18 inputs.
+/// SCALING:
+/// - All *real* quantities (probabilities, exponentials, ln/exp inputs) are 1e18 (WAD).
+/// - All *USDC amounts* and trade sizes (b, t, m) are 1e6.
 ///
-/// - All *USDC amounts* (m, b, t) remain **1e6-scaled**.
-///
-/// ## LOGIC SUMMARY
-/// - We compute:
-///       p = R_k / S               (1e18)
-///       e = exp( ± t / b )        (1e18)
-///       term = (...)              (1e18)
-///       ln(term)                  (returns ln(termReal) * 1e18)
-///       m = b * ln(termReal)      (converted to 1e6)
-///
-/// - Critically: ln() and exp() operate on 1e18-fixed-point reals.
-///   To get back to 1e6 USDC, we multiply by b (1e6) and divide by 1e18.
-///
-/// - These routines now return **with-fee** amounts, applying FEE_BPS at the end.
+/// This library:
+/// - Works on LMSRStorageLib.State (no dependency on LMSRMarketMaker).
+/// - Applies FEE_BPS internally for buy/sell quotes.
 library LMSRQuoteLib {
-    using PRBMathSD59x18 for int256;
     using LMSRMathLib for int256;
 
-    /// ---------------------------------------------------------------------
-    /// BUY: price a trade of size `t` tokens (BACK or true LAY)
-    /// ---------------------------------------------------------------------
-    ///
+    uint256 internal constant WAD      = 1e18;
+    uint256 internal constant FEE_BPS  = 30;    // e.g. 0.30% – set to whatever you want
+
+    /*//////////////////////////////////////////////////////////////
+                             INTERNAL HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    function _requireMarket(
+        LMSRStorageLib.State storage s,
+        uint256               marketId
+    ) private view returns (LMSRStorageLib.Market storage m) {
+        m = LMSRStorageLib.market(s, marketId);
+        require(m.initialized, "LMSR: not initialized");
+        require(m.S > 0, "LMSR: S=0");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                BUY – EXACT TOKENS
+    //////////////////////////////////////////////////////////////*/
+
     /// If BACK:
     ///     m = b ln( 1 - p + p e^{ +t/b } )
     ///
-    /// If LAY (true not-i):
+    /// If LAY:
     ///     m = b ln( p + (1-p) e^{ +t/b } )
     ///
-    /// NOTES ON SCALING:
-    ///     - pWad, eTB, termWad, lnWad are all 1e18
-    ///     - lnWad = ln(termReal) * 1e18
-    ///     - mSigned = (b * lnWad) / 1e18   → 1e6
-    ///     - We then apply the protocol fee:
-    ///           mWithFee = mNoFee * (1 + FEE_BPS/10_000)
+    /// Then apply fee:
+    ///     mWithFee = mNoFee * (1 + FEE_BPS/10_000).
     function quoteBuyInternal(
-        LMSRMarketMaker self,
+        LMSRStorageLib.State storage s,
         uint256 marketId,
         uint256 ledgerPositionId,
-        bool isBack,
+        bool    isBack,
         uint256 t
     ) internal view returns (uint256 mWithFee) {
-        require(t > 0, "t=0");
+        require(t > 0, "LMSR: t=0");
 
-        // Get the internal LMSR slot index for this ledger position.
-        uint256 slot = LMSRHelpersLib.requireListed(self, marketId, ledgerPositionId);
+        LMSRStorageLib.Market storage m = _requireMarket(s, marketId);
+        uint256 slot = LMSRStorageLib.requireListed(m, ledgerPositionId);
 
-        // pWad = p * 1e18 = R_k / S
-        int256 pWad = (self.R[marketId][slot] * int256(LMSRMarketMaker.WAD))
-                    / self.S[marketId];
+        // p = R_k / S (1e18)
+        int256 pWad = (m.R[slot] * int256(WAD)) / m.S;
 
-        // eTB = e^{+t/b} * 1e18
-        int256 eTB  = LMSRMathLib.expRatioOverB(self.b[marketId], int256(uint256(t)));
+        // e^{+t/b} in 1e18
+        int256 eTB = LMSRMathLib.expRatioOverB(m.b, int256(uint256(t)));
 
-        // termWad is always 1e18-scaled
         int256 termWad;
         if (isBack) {
             // term = 1 - p + p e^{t/b}
-            termWad = int256(LMSRMarketMaker.WAD) - pWad + pWad.wmul(eTB);
+            termWad = int256(WAD) - pWad + pWad.wmul(eTB);
         } else {
             // term = p + (1-p) e^{t/b}
-            termWad = pWad + (int256(LMSRMarketMaker.WAD) - pWad).wmul(eTB);
+            termWad = pWad + (int256(WAD) - pWad).wmul(eTB);
         }
 
-        // lnWad = ln(termReal) * 1e18
-        int256 lnWad = termWad.ln();
+        int256 lnWad = LMSRMathLib.lnWad(termWad);
 
-        // Convert back to 1e6 USDC:
-        // mNoFee = b * ln(termReal)
-        // because lnWad = ln(termReal)*1e18
-        int256 mSigned = (self.b[marketId] * lnWad) / int256(LMSRMarketMaker.WAD);
-        require(mSigned >= 0, "negative m");
+        // mNoFee = b * ln(termReal)  (back to 1e6)
+        int256 mSigned = (m.b * lnWad) / int256(WAD);
+        require(mSigned >= 0, "LMSR: negative m");
 
         uint256 mNoFee = uint256(mSigned);
 
-        // Apply fee for BUY (user pays more):
-        // mWithFee = mNoFee * (1 + FEE_BPS/10_000)
-        mWithFee = (mNoFee * (10_000 + LMSRMarketMaker.FEE_BPS)) / 10_000;
+        // apply fee – trader pays more on BUY
+        mWithFee = (mNoFee * (10_000 + FEE_BPS)) / 10_000;
     }
 
-    /// ---------------------------------------------------------------------
-    /// SELL: price a trade of size `t` tokens (BACK or true LAY)
-    /// ---------------------------------------------------------------------
-    ///
+    /*//////////////////////////////////////////////////////////////
+                                SELL – EXACT TOKENS
+    //////////////////////////////////////////////////////////////*/
+
     /// If BACK:
     ///     m = b ln( 1 - p + p e^{ -t/b } )
     ///
     /// If LAY:
     ///     m = b ln( p + (1-p) e^{ -t/b } )
     ///
-    /// We interpret `m` as the **pre-fee gross USDC out**, then apply the
-    /// protocol fee so the trader receives:
-    ///
-    ///     mWithFee = mNoFee * (1 - FEE_BPS/10_000)
-    ///
-    /// Same scaling considerations as quoteBuyInternal.
+    /// We interpret `m` as pre-fee gross USDC out and then:
+    ///     mWithFee = mNoFee * (1 - FEE_BPS/10_000).
     function quoteSellInternal(
-        LMSRMarketMaker self,
+        LMSRStorageLib.State storage s,
         uint256 marketId,
         uint256 ledgerPositionId,
-        bool isBack,
+        bool    isBack,
         uint256 t
     ) internal view returns (uint256 mWithFee) {
-        require(t > 0, "t=0");
+        require(t > 0, "LMSR: t=0");
 
-        // Get the internal LMSR slot for the ledgerPositionId.
-        uint256 slot = LMSRHelpersLib.requireListed(self, marketId, ledgerPositionId);
+        LMSRStorageLib.Market storage m = _requireMarket(s, marketId);
+        uint256 slot = LMSRStorageLib.requireListed(m, ledgerPositionId);
 
-        // p in 1e18
-        int256 pWad = (self.R[marketId][slot] * int256(LMSRMarketMaker.WAD))
-                    / self.S[marketId];
+        int256 pWad = (m.R[slot] * int256(WAD)) / m.S;
 
-        // e^{-t/b} in 1e18 form
-        int256 eNegTB = LMSRMathLib.expRatioOverB(self.b[marketId], -int256(uint256(t)));
+        // e^{-t/b}
+        int256 eNegTB = LMSRMathLib.expRatioOverB(m.b, -int256(uint256(t)));
 
-        // termWad is what is inside the ln(..) multiplied up by 10^18
         int256 termWad;
         if (isBack) {
-            // term = 1 - p + p e^{-t/b}
-            termWad = int256(LMSRMarketMaker.WAD) - pWad + pWad.wmul(eNegTB);
+            termWad = int256(WAD) - pWad + pWad.wmul(eNegTB);
         } else {
-            // term = p + (1-p) e^{-t/b}
-            termWad = pWad + (int256(LMSRMarketMaker.WAD) - pWad).wmul(eNegTB);
+            termWad = pWad + (int256(WAD) - pWad).wmul(eNegTB);
         }
 
-        // lnWad is the result of taking ln(termReal) and then multiplying by 10^18
-        int256 lnWad = termWad.ln();
+        int256 lnWad = LMSRMathLib.lnWad(termWad);
 
-        // mSigned is the pre-fee m in 1e6 units (USDC),
-        // **not** multiplied by 1e18 anymore:
-        //
-        //   mNoFee = b * ln(termReal)
-        int256 mSigned = (self.b[marketId] * lnWad) / int256(LMSRMarketMaker.WAD);
-        require(mSigned >= 0, "negative m");
+        int256 mSigned = (m.b * lnWad) / int256(WAD);
+        require(mSigned >= 0, "LMSR: negative m");
 
         uint256 mNoFee = uint256(mSigned);
 
-        // Apply fee for SELL (trader receives less):
-        // mWithFee = mNoFee * (1 - FEE_BPS/10_000)
-        mWithFee = (mNoFee * (10_000 - LMSRMarketMaker.FEE_BPS)) / 10_000;
+        // apply fee – trader receives less on SELL
+        mWithFee = (mNoFee * (10_000 - FEE_BPS)) / 10_000;
     }
 
-    /// ---------------------------------------------------------------------
-    /// BUY FOR USDC: invert the cost function to compute t for a given m
-    /// ---------------------------------------------------------------------
+    /*//////////////////////////////////////////////////////////////
+                          BUY FOR USDC – INVERT COST
+    //////////////////////////////////////////////////////////////*/
+
+    /// Invert buy formulas.
     ///
     /// If BACK:
     ///   x = exp(m/b)
@@ -169,82 +148,55 @@ library LMSRQuoteLib {
     ///   y = (x - p) / (1 - p)
     ///   t = b ln(y)
     ///
-    /// SCALING:
-    ///   - m, b, t are all 1e6
-    ///   - x, y, p are 1e18
-    ///   - ln() returns 1e18 scaling
-    ///   - final tSigned is converted back to 1e6
-    ///
-    /// NOTE: here `mFinal` is **with-fee** USDC in. We first strip the fee
-    /// to recover the internal LMSR m (pre-fee), then invert the formula.
+    /// `mFinal` is post-fee USDC in. We first strip fee to find internal m.
     function quoteBuyForUSDCInternal(
-        LMSRMarketMaker self,
+        LMSRStorageLib.State storage s,
         uint256 marketId,
         uint256 ledgerPositionId,
-        bool isBack,
+        bool    isBack,
         uint256 mFinal
     ) internal view returns (uint256 tOut) {
-        require(mFinal > 0, "bad m");
+        require(mFinal > 0, "LMSR: bad m");
 
-        // get the internal LMSR slot for the ledgerPositionId
-        uint256 slot = LMSRHelpersLib.requireListed(self, marketId, ledgerPositionId);
+        LMSRStorageLib.Market storage m = _requireMarket(s, marketId);
+        uint256 slot = LMSRStorageLib.requireListed(m, ledgerPositionId);
 
-        // Remove fee → still 1e6 units
-        // m = mFinal / (1 + FEE_BPS/10_000)
-        uint256 m = (mFinal * 10_000) / (10_000 + LMSRMarketMaker.FEE_BPS);
+        // remove fee
+        uint256 mNoFee = (mFinal * 10_000) / (10_000 + FEE_BPS);
 
-        // p in 1e18
-        int256 pWad = (self.R[marketId][slot] * int256(LMSRMarketMaker.WAD))
-                    / self.S[marketId];
-        require(pWad > 0 && pWad < int256(LMSRMarketMaker.WAD), "bad p");
+        int256 pWad = (m.R[slot] * int256(WAD)) / m.S;
+        require(pWad > 0 && pWad < int256(WAD), "LMSR: bad p");
 
-        // mWad = (m/b) * 1e18   — the input to exp()
-        int256 mbWad = (int256(uint256(m)) * int256(LMSRMarketMaker.WAD))
-                    / self.b[marketId];
-
-        // x = e^{m/b} in 1e18
-        int256 x = mbWad.exp();
+        int256 mbWad = (int256(uint256(mNoFee)) * int256(WAD)) / m.b;
+        int256 x = sd(mbWad).exp().unwrap(); // e^{m/b}
 
         int256 y;
         if (isBack) {
-            // y = 1 + (x - 1) / p
-            int256 numer = x - int256(LMSRMarketMaker.WAD);
-            y = int256(LMSRMarketMaker.WAD)
-                + (numer * int256(LMSRMarketMaker.WAD)) / pWad;
+            // y = 1 + (x - 1)/p
+            int256 numer = x - int256(WAD);
+            y = int256(WAD) + (numer * int256(WAD)) / pWad;
         } else {
             // y = (x - p) / (1 - p)
-            int256 denom = int256(LMSRMarketMaker.WAD) - pWad;
-            require(denom > 0, "den=0");
-
+            int256 denom = int256(WAD) - pWad;
+            require(denom > 0, "LMSR: den=0");
             int256 numer = x - pWad;
-            require(numer > 0, "domain");
-
-            y = (numer * int256(LMSRMarketMaker.WAD)) / denom;
+            require(numer > 0, "LMSR: domain");
+            y = (numer * int256(WAD)) / denom;
         }
 
-        // ln domain restriction (y >= 1)
-        require(y >= int256(LMSRMarketMaker.WAD), "ln domain");
+        require(y >= int256(WAD), "LMSR: ln domain");
 
-        // lnY = ln(yReal) * 1e18
-        int256 lnY = y.ln();
-
-        // Convert to 1e6:
-        // t = b * ln(yReal)
-        int256 tSigned =
-            (self.b[marketId] * lnY) / int256(LMSRMarketMaker.WAD);
-
-        require(tSigned >= 0, "no tokens");
+        int256 lnY = sd(y).ln().unwrap();
+        int256 tSigned = (m.b * lnY) / int256(WAD);
+        require(tSigned >= 0, "LMSR: no tokens");
 
         tOut = uint256(tSigned);
     }
 
-// added 4th quadrant function for completeness
+    /*//////////////////////////////////////////////////////////////
+                         SELL FOR USDC – INVERT COST
+    //////////////////////////////////////////////////////////////*/
 
-    /// ---------------------------------------------------------------------
-    /// SELL FOR USDC: invert the sell cost function to compute `t` for a
-    ///                desired USDC-out (after fee).
-    /// ---------------------------------------------------------------------
-    ///
     /// If BACK:
     ///   x = exp(m/b)
     ///   y = (x - 1 + p) / p       // y = e^{-t/b}
@@ -255,77 +207,49 @@ library LMSRQuoteLib {
     ///   y = (x - p) / (1 - p)     // y = e^{-t/b}
     ///   t = -b ln(y)
     ///
-    /// SCALING:
-    ///   - mFinal (input)  is 1e6 and includes fee.
-    ///   - mNoFee          is 1e6 pre-fee (internal LMSR m).
-    ///   - x, y, p are 1e18.
-    ///   - ln() returns 1e18 scaling.
-    ///   - final tSigned is converted back to 1e6.
+    /// `mFinal` is post-fee USDC out. We first strip fee to find internal m.
     function quoteSellForUSDCInternal(
-        LMSRMarketMaker self,
+        LMSRStorageLib.State storage s,
         uint256 marketId,
         uint256 ledgerPositionId,
-        bool isBack,
+        bool    isBack,
         uint256 mFinal
     ) internal view returns (uint256 tOut) {
-        require(mFinal > 0, "bad m");
+        require(mFinal > 0, "LMSR: bad m");
 
-        // get the internal LMSR slot for the ledgerPositionId
-        uint256 slot = LMSRHelpersLib.requireListed(self, marketId, ledgerPositionId);
+        LMSRStorageLib.Market storage m = _requireMarket(s, marketId);
+        uint256 slot = LMSRStorageLib.requireListed(m, ledgerPositionId);
 
-        // Convert desired USDC-out (after fee) into the internal pre-fee m:
-        // mNoFee = mFinal / (1 - FEE_BPS/10_000)
-        uint256 mNoFee = (mFinal * 10_000) / (10_000 - LMSRMarketMaker.FEE_BPS);
+        // pre-fee internal m
+        uint256 mNoFee = (mFinal * 10_000) / (10_000 - FEE_BPS);
 
-        // p in 1e18
-        int256 pWad = (self.R[marketId][slot] * int256(LMSRMarketMaker.WAD))
-                    / self.S[marketId];
-        require(pWad > 0 && pWad < int256(LMSRMarketMaker.WAD), "bad p");
+        int256 pWad = (m.R[slot] * int256(WAD)) / m.S;
+        require(pWad > 0 && pWad < int256(WAD), "LMSR: bad p");
 
-        // mWad = (mNoFee/b) * 1e18 — the input to exp()
-        int256 mWad = (int256(mNoFee) * int256(LMSRMarketMaker.WAD))
-                    / self.b[marketId];
+        int256 mWad = (int256(uint256(mNoFee)) * int256(WAD)) / m.b;
+        int256 x    = sd(mWad).exp().unwrap(); // e^{m/b}
 
-        // x = e^{m/b} in 1e18
-        int256 x = mWad.exp();
-
-        // y = e^{-t/b} in 1e18
         int256 y;
         if (isBack) {
-            // BACK:
-            //   yReal = (xReal - 1 + p) / p
-            // With all terms in 1e18:
-            //   numer = x + pWad - 1e18
-            //   y = numer * 1e18 / pWad
-            int256 numer = x + pWad - int256(LMSRMarketMaker.WAD);
-            require(numer > 0, "domain");
-            y = (numer * int256(LMSRMarketMaker.WAD)) / pWad;
+            // y = (x - 1 + p) / p
+            int256 numer = x + pWad - int256(WAD);
+            require(numer > 0, "LMSR: domain");
+            y = (numer * int256(WAD)) / pWad;
         } else {
-            // LAY:
-            //   yReal = (xReal - p) / (1 - p)
-            int256 denom = int256(LMSRMarketMaker.WAD) - pWad;
-            require(denom > 0, "den=0");
-
+            // y = (x - p) / (1 - p)
+            int256 denom = int256(WAD) - pWad;
+            require(denom > 0, "LMSR: den=0");
             int256 numer = x - pWad;
-            require(numer > 0, "domain");
-
-            y = (numer * int256(LMSRMarketMaker.WAD)) / denom;
+            require(numer > 0, "LMSR: domain");
+            y = (numer * int256(WAD)) / denom;
         }
 
-        // y = e^{-t/b} so 0 < y <= 1
-        require(y > 0 && y <= int256(LMSRMarketMaker.WAD), "y out of range");
+        require(y > 0 && y <= int256(WAD), "LMSR: y out of range");
 
-        // t = -b * ln(yReal)
-        // lnY = ln(yReal) * 1e18 (negative or zero)
-        int256 lnY = y.ln();
-
-        // negate to make t positive:  t = -b * ln(yReal)
-        int256 tSigned = (-self.b[marketId] * lnY) / int256(LMSRMarketMaker.WAD);
-        require(tSigned >= 0, "no tokens");
+        int256 lnY = sd(y).ln().unwrap();
+        int256 tSigned = (-m.b * lnY) / int256(WAD); // -b ln(y)
+        require(tSigned >= 0, "LMSR: no tokens");
 
         tOut = uint256(tSigned);
     }
-
-
-
 }

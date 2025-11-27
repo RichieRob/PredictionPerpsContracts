@@ -1,276 +1,268 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import { PRBMathSD59x18 } from "@prb/math/PRBMathSD59x18.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Interfaces/ILedger.sol";
-import "./AMMLibraries/LMSRMathLib.sol";
-import "./AMMLibraries/LMSRQuoteLib.sol";
-import "./AMMLibraries/LMSRUpdateLib.sol";
-import "./AMMLibraries/LMSRExpansionLib.sol";
+import "./AMMLibraries/IMarketMaker.sol";
+import "./AMMLibraries/LMSRStorageLib.sol";
 import "./AMMLibraries/LMSRInitLib.sol";
+import "./AMMLibraries/LMSRExpandLib.sol";
 import "./AMMLibraries/LMSRExecutionLib.sol";
-import "./AMMLibraries/LMSRHelpersLib.sol";
 import "./AMMLibraries/LMSRViewLib.sol";
-import "./Interfaces/ILedger.sol";
-import "./Interfaces/IMarketMaker.sol";
+import "./AMMLibraries/LMSRTwapLib.sol";
+import "./AMMLibraries/ILedgerPositions.sol";
 
 
 
-/// @title LMSRMarketMaker (Reserve + Controlled Expansion + Listed-Subset Mapping)
-/// @notice O(1) LMSR with global+local decomposition, non-tradable reserve mass,
-///         and an explicit mapping from ledger positionIds to AMM slots.
-///         Externally, ALL APIs accept *ledger* positionIds. Internally, we
-///         look up the AMM slot via `slotOf[ledgerId]`.
-///         Supports multiple markets in a single deployment.
-/// @notice LMSR AMM with O(1) updates using global+local decomposition:
-///         x_i = U_all + u_i  =>  E_i = exp(x_i/b) = G * R_i
-///         Cache: G = exp(U_all/b), R_i = exp(u_i/b), S = sum_i R_i
-///         Prices: p_i = R_i / S
-///         BACK buy t:     m = b * ln(1 - p + p * e^{ t/b})
-///         BACK sell t:    m = b * ln(1 - p + p * e^{-t/b})
-///         LAY(not-i) buy: m = b * ln(   p + (1-p) * e^{ t/b})
-///         LAY(not-i) sell:m = b * ln(   p + (1-p) * e^{-t/b})
-///         State updates use:
-///           ΔU_other, ΔU_k  (see mapping below) and
-///           Z' = e^{ΔU_other/b}(Z - E_k) + e^{ΔU_k/b} E_k
-///         Implemented as:
-///           G    *= e^{ΔU_other/b}
-///           R_k  *= e^{(ΔU_k - ΔU_other)/b}
-///           S    += (R_k_new - R_k_old)
-contract LMSRMarketMaker {
-    using PRBMathSD59x18 for int256;
-    using LMSRMathLib for int256;
+
+
+/// @title LMSRMarketMaker
+/// @notice O(1) LMSR AMM that:
+///         - Maintains prices & internal state for many markets.
+///         - Does NOT move balances or touch ppUSDC/USDC.
+///         - Is called only via IMarketMaker.* by your MarketMakerLedger.
+///
+/// Ledger does:
+///   - freeCollateral / ppUSDC accounting
+///   - mint/burn of position ERC20s
+///   - settlement & resolution
+///
+/// LMSR does:
+///   - quoting (BACK / true LAY)
+///   - internal state updates (G, R_i, S, reserve)
+///   - TWAP accumulation (via LMSRTwapLib).
+contract LMSRMarketMaker is IMarketMaker {
+using LMSRInitLib    for LMSRStorageLib.State;
+using LMSRExpandLib  for LMSRStorageLib.State;
+using LMSRExecutionLib  for LMSRStorageLib.State;
+using LMSRViewLib       for LMSRStorageLib.State;
+using LMSRTwapLib       for LMSRStorageLib.State;
+
 
     /*//////////////////////////////////////////////////////////////
-                                CONSTANTS
+                               STORAGE ROOT
     //////////////////////////////////////////////////////////////*/
 
-    uint256 public constant FEE_BPS = 30;          // 0.30%
-    uint256 public constant WAD     = 1e18;
+    /// @notice All AMM markets live inside this single state struct.
+    LMSRStorageLib.State internal _ls;
 
     /*//////////////////////////////////////////////////////////////
-                            EXTERNAL REFERENCES
+                           GOVERNANCE / ACCESS
     //////////////////////////////////////////////////////////////*/
 
-    ILedger public immutable ledger;
-    IERC20  public immutable usdc;
-    address public immutable governor; // who may list positions / split reserve
+    /// @notice Governor may initialize markets, list positions, split reserve.
+    address public immutable governor;
 
-    /*//////////////////////////////////////////////////////////////
-                             PER-MARKET STATE
-    //////////////////////////////////////////////////////////////*/
-
-    // LMSR PARAMS
-    mapping(uint256 => int256) public b; // > 0, per market 1e18
-    mapping(uint256 => int256) public maxLiabilityUpscaled; // > 0, per market (x10^6 - decimals) UPSCALED BY 1e18
-
-    // DECOMPOSED STATE
-    mapping(uint256 => int256) public G; // Global factor G = exp(U_all / b)  (1e18)
-    mapping(uint256 => int256[]) public R; // Tradable base masses (1e18) indexed by AMM slot [0..numOutcomes-1]
-    mapping(uint256 => int256) public S;   // sum(R) this includes R_reserve
-    mapping(uint256 => int256) public R_reserve; // Non-tradable reserve mass (1e18)
-    mapping(uint256 => uint256) public numOutcomes; // Number of listed tradables (R.length)
-    mapping(uint256 => bool) public isExpanding; // Whether this market can split the reserve into new listed positions
-
-    // LEDGER ↔ AMM LISTING MAP
-    mapping(uint256 => mapping(uint256 => uint256)) public slotOf; // marketId => ledgerPositionId => slot (0 means NOT listed - functions like a combined boolean)
-    mapping(uint256 => mapping(uint256 => uint256)) public ledgerIdOfSlot; // marketId => slot => ledgerPositionId
-
-    // Initialization flag per market
-    mapping(uint256 => bool) public initialized;
-
-    /*//////////////////////////////////////////////////////////////
-                                   EVENTS
-    //////////////////////////////////////////////////////////////*/
-
-    event Trade(address indexed user, uint256 indexed ledgerPositionId, bool isBack, uint256 tokens, uint256 usdcAmount, bool isBuy);
-    event PriceUpdated(uint256 indexed ledgerPositionId, uint256 pBackWad);
-    event PositionListed(uint256 indexed ledgerPositionId, uint256 slot, int256 priorR);
-    event PositionSplitFromReserve(uint256 indexed ledgerPositionId, uint256 slot, uint256 alphaWad, int256 reserveBefore, int256 reserveAfter, int256 Rnew);
-
-    /*//////////////////////////////////////////////////////////////
-                                CONSTRUCTOR
-    //////////////////////////////////////////////////////////////*/
-
-    constructor(
-        address _ledger,
-        address _usdc,
-        address _governor
-    ) {
-        require(_ledger != address(0) && _usdc != address(0), "bad addr");
-        require(_governor != address(0), "bad governor");
-
-        ledger     = ILedger(_ledger);
-        usdc       = IERC20(_usdc);
-        governor   = _governor;
-
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                              MARKET INITIALIZATION
-    //////////////////////////////////////////////////////////////*/
+    /// @notice The unified ledger, used only to check position existence.
+    ILedgerPositions public immutable ledger;
 
     modifier onlyGovernor() {
-        require(msg.sender == governor, "not governor");
+        require(msg.sender == governor, "LMSR: not governor");
         _;
     }
 
- 
-    struct InitialPosition {
-        uint256 positionId;
-        int256 r;
+    constructor(address _governor, address _ledger) {
+        require(_governor != address(0), "LMSR: bad governor");
+        require(_ledger != address(0), "LMSR: bad ledger");
+        governor = _governor;
+        ledger   = ILedgerPositions(_ledger);
     }
 
-    /// @notice Initialize a new market. Can only be called once per marketId.
-    /// @param _marketId The market ID to initialize.
-    /// @param initialPositions Array of {positionId, r} pairs for initial listed tradables.
-    /// @param liabilityUSDC The total liability in USDC (1e6-scaled) to compute b = liability / ln(numPositions).
-    /// @param reserve0 Initial reserve mass (1e18). Must be 0 if !_isExpanding; >0 if _isExpanding.
-    /// @param _isExpanding Whether the market is expanding (allows reserve splits).
-    function initMarket(
-        uint256 _marketId,
-        InitialPosition[] memory initialPositions,
-        uint256 liabilityUSDC,
-        int256 reserve0,
-        bool _isExpanding
+    /*//////////////////////////////////////////////////////////////
+                         MARKET INITIALISATION / EXPANSION
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initialize a new LMSR market (once per ledger marketId).
+    /// @param marketId         Market identifier shared with the ledger.
+    /// @param initialPositions Array of {positionId, r} priors (caller-scale).
+    /// @param liabilityUSDC    Max AMM liability in raw USDC (1e6).
+    /// @param reserve0         Initial reserve mass (caller-scale; usually 1e18).
+    /// @param isExpanding      Whether the market can split from reserve.
+function initMarket(
+    uint256 marketId,
+    LMSRInitLib.InitialPosition[] calldata initialPositions,
+    uint256 liabilityUSDC,
+    int256  reserve0,
+    bool    isExpanding
+) external onlyGovernor {
+    _ls.initMarket(
+        ledger,
+        marketId,
+        initialPositions,
+        liabilityUSDC,
+        reserve0,
+        isExpanding
+    );
+}
+
+
+    /// @notice List a new (or previously unlisted) ledger position with chosen prior mass.
+    /// @dev This shifts all prices (S += priorR).
+    function listPosition(
+        uint256 marketId,
+        uint256 ledgerPositionId,
+        int256  priorR
     ) external onlyGovernor {
-        LMSRInitLib.initMarketInternal(this, _marketId, initialPositions, liabilityUSDC, reserve0, _isExpanding);
-    }
-    
-    /*//////////////////////////////////////////////////////////////
-                                    VIEWS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Get BACK price for a *ledger* positionId (1e18)
-    function getBackPriceWad(uint256 marketId, uint256 ledgerPositionId) public view returns (uint256) {
-        return LMSRViewLib.getBackPriceWadInternal(this, marketId, ledgerPositionId);
-    }
-
-    /// @notice Get true LAY(not-i) price for a *ledger* positionId (1e18)
-    function getLayPriceWad(uint256 marketId, uint256 ledgerPositionId) external view returns (uint256) {
-        return LMSRViewLib.getLayPriceWadInternal(this, marketId, ledgerPositionId);
-    }
-
-    /// @notice Informational reserve (“Other”) price (1e18)
-    function getReservePriceWad(uint256 marketId) external view returns (uint256) {
-        return LMSRViewLib.getReservePriceWadInternal(this, marketId);
-    }
-
-    /// @notice Z = sum E_i = G * S (1e18)
-    function getZ(uint256 marketId) public view returns (uint256) {
-        return LMSRViewLib.getZInternal(this, marketId);
-    }
-
-    /// @notice Return the listed AMM slots and their ledger ids (for UIs)
-    function listSlots(uint256 marketId) external view returns (uint256[] memory listedLedgerIds) {
-        return LMSRViewLib.listSlotsInternal(this, marketId);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                   QUOTES
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Quote cost  for buying t tokens of ledgerPositionId.
-    function quoteBuy(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 m) {
-        return LMSRQuoteLib.quoteBuyInternal(this, marketId, ledgerPositionId, isBack, t);
-    }
-
-    /// @notice Quote proceeds  for selling t tokens.
-    function quoteSell(uint256 marketId, uint256 ledgerPositionId, bool isBack, uint256 t) public view returns (uint256 m) {
-        return LMSRQuoteLib.quoteSellInternal(this, marketId, ledgerPositionId, isBack, t);
-    }
-
-    /// @notice CLOSED-FORM tokens for exact USDC-in 
-    function quoteBuyForUSDC(
-        uint256 marketId,
-        uint256 ledgerPositionId,
-        bool isBack,
-        uint256 mFinal    ) public view returns (uint256 tOut) {
-        return LMSRQuoteLib.quoteBuyForUSDCInternal(this, marketId, ledgerPositionId, isBack, mFinal);
-    }
-
-   
-   function quoteSellForUSDC(
-        uint256 marketId,
-        uint256 ledgerPositionId,
-        bool isBack,
-        uint256 mFinal
-    ) public view returns (uint256 tIn) {
-        return LMSRQuoteLib.quoteSellForUSDCInternal(this, marketId, ledgerPositionId, isBack, mFinal);
-
-    }
-
-   
-
-    /*//////////////////////////////////////////////////////////////
-                                 EXPANSION
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice List a new (or previously unlisted) ledger position with a chosen prior mass.
-    ///         One-way: once listed, cannot be delisted.
-    function listPosition(uint256 marketId, uint256 ledgerPositionId, int256 priorR) external onlyGovernor {
-        LMSRExpansionLib.listPositionInternal(this, marketId, ledgerPositionId, priorR);
+        _ls.listPosition(
+            ledger,
+            marketId,
+            ledgerPositionId,
+            priorR
+        );
     }
 
     /// @notice Split α fraction of the reserve into a NEW listing tied to `ledgerPositionId`.
-    ///         Requires market to be in expanding mode.
-    ///         Keeps S constant → price continuity.
-    function splitFromReserve(uint256 marketId, uint256 ledgerPositionId, uint256 alphaWad) external onlyGovernor returns (uint256 slot) {
-        return LMSRExpansionLib.splitFromReserveInternal(this, marketId, ledgerPositionId, alphaWad);
+    /// @dev This keeps S constant (we move mass from reserve → tradable).
+    function splitFromReserve(
+        uint256 marketId,
+        uint256 ledgerPositionId,
+        uint256 alphaWad
+    ) external onlyGovernor returns (uint256 slot) {
+        return _ls.splitFromReserve(
+            ledger,
+            marketId,
+            ledgerPositionId,
+            alphaWad
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
-                                   EXECUTION
+                                     VIEWS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Buy exact t (BACK i or true LAY(not-i)) by *ledger* positionId
-    function buy(
+    /// @notice BACK price p(i) in 1e18 for a given ledgerPositionId.
+    function getBackPriceWad(
         uint256 marketId,
-        uint256 ledgerPositionId,
-        bool isBack,
+        uint256 ledgerPositionId
+    ) external view returns (uint256) {
+        return _ls.getBackPriceWad(marketId, ledgerPositionId);
+    }
+
+    /// @notice True LAY(not-i) price 1 − p(i) in 1e18.
+    function getLayPriceWad(
+        uint256 marketId,
+        uint256 ledgerPositionId
+    ) external view returns (uint256) {
+        return _ls.getLayPriceWad(marketId, ledgerPositionId);
+    }
+
+    /// @notice Informational reserve (“Other”) price in 1e18.
+    function getReservePriceWad(
+        uint256 marketId
+    ) external view returns (uint256) {
+        return _ls.getReservePriceWad(marketId);
+    }
+
+    /// @notice Z = G · S in 1e18 (sum of exponentials).
+    function getZ(
+        uint256 marketId
+    ) external view returns (uint256) {
+        return _ls.getZ(marketId);
+    }
+
+    /// @notice Return the listed ledger position ids for this market.
+    function listSlots(
+        uint256 marketId
+    ) external view returns (uint256[] memory listedLedgerIds) {
+        return _ls.listSlots(marketId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                TWAP VIEWS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Current cumulative (price × seconds) for a position, plus timestamp.
+    /// @dev Off-chain callers use this to compute TWAP between two checkpoints.
+    function twapCurrentCumulative(
+        uint256 marketId,
+        uint256 ledgerPositionId
+    ) external view returns (uint256 cumulativeWadSeconds, uint32 timestamp) {
+        return _ls.currentCumulative(marketId, ledgerPositionId);
+    }
+
+    /// @notice Pure helper to compute TWAP between two checkpoints.
+    function twapConsultFromCheckpoints(
+        uint256 cumStart,
+        uint32  tStart,
+        uint256 cumEnd,
+        uint32  tEnd
+    ) external pure returns (uint256 avgPriceWad) {
+        return LMSRTwapLib.consultFromCheckpoints(
+            cumStart,
+            tStart,
+            cumEnd,
+            tEnd
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       IMarketMaker – EXECUTION ENTRYPOINTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @inheritdoc IMarketMaker
+    function applyBuyExactTokens(
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
         uint256 t,
-        uint256 maxUSDCIn,
-        bool usePermit2,
-        bytes calldata permitBlob
-    ) external returns (uint256 mFinal) {
-        return LMSRExecutionLib.buyInternal(this, marketId, ledgerPositionId, isBack, t, maxUSDCIn, usePermit2, permitBlob);
+        uint256 maxUSDCIn
+    ) external override returns (uint256 usdcIn) {
+        // All maths + events inside LMSRExecutionLib
+        usdcIn = _ls.buyExactTokens(
+            marketId,
+            positionId,
+            isBack,
+            t,
+            maxUSDCIn
+        );
     }
 
-    /// @notice Buy for exact USDC (inverse closed-form; supports BACK and true LAY)
-    function buyForUSDC(
+    /// @inheritdoc IMarketMaker
+    function applyBuyForUSDC(
         uint256 marketId,
-        uint256 ledgerPositionId,
-        bool isBack,
+        uint256 positionId,
+        bool    isBack,
         uint256 usdcIn,
-        uint256 minTokensOut,
-        bool usePermit2,
-        bytes calldata permitBlob
-    ) external returns (uint256 tOut) {
-        return LMSRExecutionLib.buyForUSDCInternal(this, marketId, ledgerPositionId, isBack, usdcIn, tMax, minTokensOut, usePermit2, permitBlob);
+        uint256 minTokensOut
+    ) external override returns (uint256 tokensOut) {
+        tokensOut = _ls.buyForUSDC(
+            marketId,
+            positionId,
+            isBack,
+            usdcIn,
+            minTokensOut
+        );
     }
 
-    /// @notice Sell exact t (BACK i or true LAY(not-i)) by *ledger* positionId
-    function sell(
+    /// @inheritdoc IMarketMaker
+    function applySellExactTokens(
         uint256 marketId,
-        uint256 ledgerPositionId,
-        bool isBack,
+        uint256 positionId,
+        bool    isBack,
         uint256 t,
         uint256 minUSDCOut
-    ) external returns (uint256 usdcOut) {
-        return LMSRExecutionLib.sellInternal(this, marketId, ledgerPositionId, isBack, t, minUSDCOut);
+    ) external override returns (uint256 usdcOut) {
+        usdcOut = _ls.sellExactTokens(
+            marketId,
+            positionId,
+            isBack,
+            t,
+            minUSDCOut
+        );
     }
 
-    function sellForUSDC(
+    /// @inheritdoc IMarketMaker
+    function applySellForUSDC(
         uint256 marketId,
-        uint256 ledgerPositionId,
-    b   ool isBack,
+        uint256 positionId,
+        bool    isBack,
         uint256 usdcOut,
-        uint256 tMax
-    ) external returns (uint256 tUsed) {
-        return return LMSRExecutionLib.sellForUSDCInternal(this, marketId,ledgerPositionId, isBack, usdcOut, tMax);
-
-
-
+        uint256 maxTokensIn
+    ) external override returns (uint256 tokensIn) {
+        tokensIn = _ls.sellForUSDC(
+            marketId,
+            positionId,
+            isBack,
+            usdcOut,
+            maxTokensIn
+        );
+    }
 }

@@ -13,6 +13,9 @@ import "./AMMLibraries/LMSRInitLib.sol";
 import "./AMMLibraries/LMSRExecutionLib.sol";
 import "./AMMLibraries/LMSRHelpersLib.sol";
 import "./AMMLibraries/LMSRViewLib.sol";
+import "./Interfaces/ILedger.sol";
+import "./Interfaces/IMarketMaker.sol";
+
 
 
 /// @title LMSRMarketMaker (Reserve + Controlled Expansion + Listed-Subset Mapping)

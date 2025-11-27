@@ -80,6 +80,15 @@ library FillIntentLib {
         require(block.timestamp <= intent.deadline, "intent expired");
         require(fillPrimary > 0, "fillPrimary=0");
         require(fillQuote  > 0, "fillQuote=0");
+            
+            // In order to unify intents we dont allow any sell intents - this is because buy and sell back and lay creates 4 different kinds, but we can represent all sells as buys. 
+            // This wil help the logic when it comes to building things like order books etc. 
+
+        require(
+        intent.kind == Types.TradeKind.BUY_EXACT_TOKENS ||
+        intent.kind == Types.TradeKind.BUY_FOR_USDC,
+        "intent kind not supported"
+        );
 
         // EIP-712 sig check
         address signer = IntentLib.recoverSigner(intent, signature);

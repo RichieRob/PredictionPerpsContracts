@@ -109,11 +109,14 @@ library LMSRTwapLib {
         uint32 nowTs = uint32(block.timestamp);
 
         uint256 Jnow = m.twapJ;
-        if (nowTs > last && m.S > 0) {
-            uint256 S  = uint256(m.S);
-            uint256 dJ = (uint256(nowTs - last) * WAD) / S;
-            Jnow += dJ;
-        }
+
+
+      // IMPORTANT: don't backfill from "genesis" when last == 0
+        if (last != 0 && nowTs > last && m.S > 0) {
+    uint256 S  = uint256(m.S);
+    uint256 dJ = (uint256(nowTs - last) * WAD) / S;
+    Jnow += dJ;
+}
 
         uint256 Ci = m.twapCum[slot];
         uint256 Ji = m.twapJ_slot[slot];

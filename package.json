@@ -1,0 +1,28 @@
+{
+  "name": "predictionperpscontractsv2",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RichieRob/PredictionPerpsContracts.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RichieRob/PredictionPerpsContracts/issues"
+  },
+  "homepage": "https://github.com/RichieRob/PredictionPerpsContracts#readme",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "hardhat": "^2.27.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "@prb/math": "^4.1.0"
+  }
+}

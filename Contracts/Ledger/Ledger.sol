@@ -37,7 +37,7 @@ import "./PositionERC20.sol";
 
 
 
-contract MarketMakerLedger {
+contract Ledger {
     using HeapLib for *;
     using MarketManagementLib for *;
     using LedgerLib for *;

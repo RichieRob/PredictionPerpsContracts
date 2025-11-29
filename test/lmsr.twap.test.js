@@ -212,15 +212,12 @@ describe("LMSRMarketMaker – TWAP", () => {
       });
     }
 
-    // Use long durations so timestamp drift is negligible in percentage terms
     const DT1 = 1_000;
     const DT2 = 2_000;
     const DT3 = 3_000;
 
-    // Segment 1: hold price after trade #1 for DT1
     await addSegment(DT1);
 
-    // Trade #2
     await amm
       .connect(owner)
       .applyBuyExactTokens(
@@ -231,10 +228,8 @@ describe("LMSRMarketMaker – TWAP", () => {
         maxIn
       );
 
-    // Segment 2: hold price after trade #2 for DT2
     await addSegment(DT2);
 
-    // Trade #3
     await amm
       .connect(owner)
       .applyBuyExactTokens(
@@ -245,7 +240,6 @@ describe("LMSRMarketMaker – TWAP", () => {
         maxIn
       );
 
-    // Segment 3: hold price after trade #3 for DT3
     await addSegment(DT3);
 
     // --- 3) Final checkpoint + on-chain TWAP ---
@@ -255,19 +249,17 @@ describe("LMSRMarketMaker – TWAP", () => {
     const dtTotal = tEnd - tStart; // BigInt
     expect(dtTotal).to.be.gt(0n);
 
-    // Intended total duration
     let manualDen = 0n;
     for (const seg of segments) {
       manualDen += seg.dt;
     }
 
-    // Allow small drift from extra mined blocks / timestamp increments
     const drift = dtTotal > manualDen ? dtTotal - manualDen : manualDen - dtTotal;
-    expect(drift).to.be.lte(5n); // 5s drift over 6000s total is <0.1%
+    expect(drift).to.be.lte(5n);
 
     const dCum = cumEnd - cumStart;
 
-    // Compute WAD-scaled avg in one go: avgWad = dCum * WAD / dtTotal
+    // On-chain WAD-scaled avg: avgWad = dCum * WAD / dtTotal
     const onchainAvgWad = (dCum * WAD) / dtTotal;
 
     // --- 4) Manual TWAP: Σ p_i * dt_i / Σ dt_i ---
@@ -284,11 +276,26 @@ describe("LMSRMarketMaker – TWAP", () => {
       ? onchainAvgWad - manualAvgWad
       : manualAvgWad - onchainAvgWad;
 
-    // With long durations, drift-induced error should be well under 0.1%
     const tolerance = manualAvgWad / 1_000n + 1n; // ~0.1% + 1 wei
+
+    // ---- LOG DETAILS ----
+    const relBps = manualAvgWad === 0n
+      ? 0n
+      : (diff * 10_000n) / manualAvgWad; // basis points (1e-4)
+
+    console.log("\n[TWAP debug]");
+    console.log("  dtTotal (sec):      ", dtTotal.toString());
+    console.log("  intended dt (sec):  ", manualDen.toString());
+    console.log("  drift (sec):        ", drift.toString());
+    console.log("  manualAvgWad:       ", manualAvgWad.toString());
+    console.log("  onchainAvgWad:      ", onchainAvgWad.toString());
+    console.log("  diff (WAD):         ", diff.toString());
+    console.log("  rel error (bps):    ", relBps.toString());
+    console.log("  tolerance (WAD):    ", tolerance.toString());
 
     expect(diff).to.be.lte(tolerance);
   });
+
 
   
 });

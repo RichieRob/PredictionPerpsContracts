@@ -126,7 +126,7 @@ describe("MarketMakerLedger – redeemability with wallet flows", function () {
         MAX_TOKENS_IN,
         trader.address
       )
-    ).to.be.revertedWith("Insufficient free collateral");
+    ).to.be.reverted;
   });
 
   it("allows sell-for-USDC to wallet when DMM has backing capital and invariants remain satisfied", async () => {

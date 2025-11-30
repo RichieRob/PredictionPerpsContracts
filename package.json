@@ -19,10 +19,14 @@
   "description": "",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
-    "hardhat": "^2.27.0"
+    "dotenv": "^17.2.3",
+    "hardhat": "^2.27.0",
+    "hardhat-contract-sizer": "^2.10.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
-    "@prb/math": "^4.1.0"
+    "@prb/math": "^4.1.0",
+    "@uniswap/permit2": "github:Uniswap/permit2",
+    "solmate": "^6.8.0"
   }
 }

@@ -15,7 +15,7 @@ describe("LMSRMarketMaker – expansion from reserve", () => {
     // 1) Mock ledger
     const MockLedger = await ethers.getContractFactory("MockLedger");
     ledger = await MockLedger.deploy();
-    await ledger.waitForDeployment();
+    await ledger.waitForDeployment(); // NEW: Deploy PositionERC20 and set it const PositionERC20 = await ethers.getContractFactory("PositionERC20"); const positionImpl = await PositionERC20.deploy(await fx.ledger.getAddress()); await positionImpl.waitForDeployment(); await fx.ledger.connect(fx.owner).setPositionERC20Implementation(await positionImpl.getAddress());
 
     // 2) LMSR AMM
     const LMSR = await ethers.getContractFactory("LMSRMarketMaker");

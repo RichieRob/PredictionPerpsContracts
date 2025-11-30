@@ -49,6 +49,10 @@ contract PositionERC20 is ERC20 {
         return string.concat(positionName, " in ", marketName);
     }
 
+    function decimals() public view virtual override returns (uint8) {
+    return 6;
+}
+
     function symbol() public view override returns (string memory) {
         (
             bool registered,

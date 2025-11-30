@@ -1,4 +1,3 @@
-// test/helpers/core.js
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
 
@@ -41,17 +40,24 @@ async function deployCore() {
   const ppUSDC = await PpUSDC.deploy();
   await ppUSDC.waitForDeployment();
 
-  const MarketMakerLedger = await ethers.getContractFactory("MarketMakerLedger");
-  const ledger = await MarketMakerLedger.deploy(
+  const Ledger = await ethers.getContractFactory("Ledger"); // Use "Ledger" now
+  const ledger = await Ledger.deploy(
     await usdcToken.getAddress(),
     await aUSDC.getAddress(),
     await aavePool.getAddress(),
     ethers.ZeroAddress, // permit2 unused
     await ppUSDC.getAddress()
   );
-  await ledger.waitForDeployment();
+  await ledger.waitForDeployment(); // NEW: Deploy PositionERC20 and set it const PositionERC20 = await ethers.getContractFactory("PositionERC20"); const positionImpl = await PositionERC20.deploy(await fx.ledger.getAddress()); await positionImpl.waitForDeployment(); await fx.ledger.connect(fx.owner).setPositionERC20Implementation(await positionImpl.getAddress());
 
   await ppUSDC.setLedger(await ledger.getAddress());
+
+  // NEW: Deploy PositionERC20 and set it on ledger
+  const PositionERC20 = await ethers.getContractFactory("PositionERC20");
+  const positionImpl = await PositionERC20.deploy(await ledger.getAddress());
+  await positionImpl.waitForDeployment();
+
+  await ledger.connect(owner).setPositionERC20Implementation(await positionImpl.getAddress());
 
   return {
     owner,

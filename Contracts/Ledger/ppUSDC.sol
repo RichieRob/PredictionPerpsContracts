@@ -20,6 +20,10 @@ contract PpUSDC is ERC20 {
         _;
     }
 
+    function decimals() public view virtual override returns (uint8) {
+    return 6;
+}
+
 function setLedger(address newLedger) external onlyOwner {
     require(ledger == address(0), "ledger already set");
     require(newLedger != address(0), "ledger = 0");

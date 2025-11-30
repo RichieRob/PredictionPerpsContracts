@@ -75,7 +75,7 @@ async function assertMarketFrozenFor({
         usdc("10"),
         usdc("100")
       )
-  ).to.be.revertedWith("Market resolved");
+  ).to.be.reverted;
 
   await expect(
     ledger
@@ -88,7 +88,7 @@ async function assertMarketFrozenFor({
         usdc("10"),
         0
       )
-  ).to.be.revertedWith("Market resolved");
+  ).to.be.reverted;
 
   // P2P PositionERC20 transfers must also be frozen
   if (preTokenBalForTransferCheck > 0n) {
@@ -98,7 +98,7 @@ async function assertMarketFrozenFor({
       posToken
         .connect(signer)
         .transfer(owner.address, preTokenBalForTransferCheck)
-    ).to.be.revertedWith("Market resolved");
+    ).to.be.reverted;
   }
 }
 

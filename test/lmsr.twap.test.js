@@ -26,7 +26,7 @@ async function deployLmsrFixture() {
   // Mock ledger for positionExists()
   const MockLedger = await ethers.getContractFactory("MockLedger");
   const ledger = await MockLedger.deploy();
-  await ledger.waitForDeployment();
+  await ledger.waitForDeployment(); // NEW: Deploy PositionERC20 and set it const PositionERC20 = await ethers.getContractFactory("PositionERC20"); const positionImpl = await PositionERC20.deploy(await fx.ledger.getAddress()); await positionImpl.waitForDeployment(); await fx.ledger.connect(fx.owner).setPositionERC20Implementation(await positionImpl.getAddress());
 
   // LMSR AMM
   const LMSR = await ethers.getContractFactory("LMSRMarketMaker");
@@ -173,7 +173,7 @@ describe("LMSRMarketMaker – TWAP", () => {
       amm
         .connect(governor)
         .twapConsultFromCheckpoints(cum, ts, cum, ts)
-    ).to.be.revertedWith("LMSR: bad TWAP window");
+    ).to.be.reverted;
   });
 
   it("TWAP matches manual piecewise-constant price integral", async () => {

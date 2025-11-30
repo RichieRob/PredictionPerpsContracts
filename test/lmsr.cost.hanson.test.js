@@ -16,7 +16,7 @@ async function setupLmsr() {
   // Mock ledger
   const MockLedger = await ethers.getContractFactory("MockLedger");
   const ledger = await MockLedger.deploy();
-  await ledger.waitForDeployment();
+  await ledger.waitForDeployment(); // NEW: Deploy PositionERC20 and set it const PositionERC20 = await ethers.getContractFactory("PositionERC20"); const positionImpl = await PositionERC20.deploy(await fx.ledger.getAddress()); await positionImpl.waitForDeployment(); await fx.ledger.connect(fx.owner).setPositionERC20Implementation(await positionImpl.getAddress());
 
   // LMSRMarketMaker(governor, ledger)
   const LMSR = await ethers.getContractFactory("LMSRMarketMaker");

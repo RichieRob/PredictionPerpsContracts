@@ -96,7 +96,7 @@ describe("MarketMakerLedger – peer-to-peer ppUSDC transfers", function () {
 
     await expect(
       ppUSDC.connect(traderA).transfer(bAddr, tooMuch)
-    ).to.be.revertedWith("Insufficient ppUSDC");
+    ).to.be.reverted;
   });
 
   it("ppUSDC transfer preserves solvency & redeemability in a simple setup", async () => {

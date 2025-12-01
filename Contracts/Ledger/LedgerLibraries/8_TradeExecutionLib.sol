@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
+import "./4_SolvencyLib.sol";
 import "../Interfaces/IMarketMaker.sol";
 
 library TradeExecutionLib {
@@ -32,6 +33,12 @@ library TradeExecutionLib {
 
         // 2) Net cash settlement: trader pays mm (ppUSDC move only)
         FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
+        
+        // 3) Check both sides solvent still
+        SolvencyLib.ensureSolvency(trader, marketId);
+        SolvencyLib.ensureSolvency(mm, marketId);
+        SolvencyLib.deallocateExcess(trader, marketId);
+        SolvencyLib.deallocateExcess(mm, marketId);
     }
 
     function processSell(
@@ -55,6 +62,12 @@ library TradeExecutionLib {
 
         // 2) Net cash settlement: mm pays trader (ppUSDC move only)
         FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
+
+        // 3) Check both sides solvent still
+        SolvencyLib.ensureSolvency(trader, marketId);
+        SolvencyLib.ensureSolvency(mm, marketId);
+        SolvencyLib.deallocateExcess(trader, marketId);
+        SolvencyLib.deallocateExcess(mm, marketId);
     }
 
     /*//////////////////////////////////////////////////////////////

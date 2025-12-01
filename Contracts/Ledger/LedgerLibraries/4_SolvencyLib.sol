@@ -178,14 +178,7 @@ library SolvencyLib {
 
         if (effMin <= 0) return;
 
-        int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
-
-
-
-         // 🔒 For the DMM we still require positive real allocation.
-    // For normal traders we allow netAlloc <= 0 (your new semantics).
-   
-
+        int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);   
 
         uint256 amount = uint256(effMin);
 

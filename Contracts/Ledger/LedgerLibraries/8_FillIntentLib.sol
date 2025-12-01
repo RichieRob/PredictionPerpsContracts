@@ -6,6 +6,7 @@ import "./0_Types.sol";
 import "./2_IntentLib.sol";
 import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
+import "./4_SolvencyLib.sol";
 
 library FillIntentLib {
     
@@ -64,6 +65,14 @@ library FillIntentLib {
         // --- 2) Move ppUSDC/freeCollateral buyer -> seller ---
         // Pure redistribution; no mint/burn, no TVL change.
         FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
+
+        //3)         
+        SolvencyLib.ensureSolvency(buyer, intent.marketId);
+        SolvencyLib.ensureSolvency(seller, intent.marketId);
+        SolvencyLib.deallocateExcess(buyer, intent.marketId);
+        SolvencyLib.deallocateExcess(seller, intent.marketId);
+
+
     }
 
     /// @dev Full intent flow: verify sig, track partial fills, then settle P2P.

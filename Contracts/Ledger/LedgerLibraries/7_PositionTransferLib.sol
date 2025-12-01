@@ -37,9 +37,6 @@ event PositionTransfer(
     ) internal {
         // H_k += amount  via tilt
         HeapLib.updateTilt(account, marketId, positionId, int256(amount));
-
-        // If this made the account "over-collateralised" we can free some capital
-        SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _receiveLay(
@@ -53,9 +50,6 @@ event PositionTransfer(
         // Lay received: layOffset += amount, tilt -= amount
         s.layOffset[account][marketId] += int256(amount);
         HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
-
-        // Again, receiving exposure can relax the tightest constraint
-        SolvencyLib.deallocateExcess(account, marketId);
     }
 
     function _emitBack(
@@ -67,8 +61,6 @@ event PositionTransfer(
         // Sending Back: H_k -= amount via tilt
         HeapLib.updateTilt(account, marketId, positionId, -int256(amount));
 
-        // Check we are still solvent after lowering H_k
-        SolvencyLib.ensureSolvency(account, marketId);
     }
 
     function _emitLay(
@@ -83,8 +75,6 @@ event PositionTransfer(
         s.layOffset[account][marketId] -= int256(amount);
         HeapLib.updateTilt(account, marketId, positionId, int256(amount));
 
-        // Check we remain solvent after changing offsets
-        SolvencyLib.ensureSolvency(account, marketId);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -64,6 +64,9 @@ library ERC20BridgeLib {
             true,   // BACK by design
             amount
         );
+        //ensure sender still solvent
+         SolvencyLib.ensureSolvency(from, marketId);
+         SolvencyLib.deallocateExcess(to, marketId);
     }
 
     function getERC20PositionMeta(address token)

@@ -97,11 +97,17 @@ contract PositionERC20 is ERC20 {
         return true;
     }
 
-    function transferFrom(
+// we need to implement transferFrom override that always fails
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        revert("transferFrom disabled; use moveFrom instead");
+    }
+
+    function moveFrom(
         address from,
         address to,
         uint256 amount
-    ) public override returns (bool) {
+    ) public returns (bool) {
         address spender = _msgSender();
         require(from != address(0) && to != address(0), "zero addr");
 
@@ -122,5 +128,15 @@ contract PositionERC20 is ERC20 {
         return true;
     }
 
-    // No mint/burn here; creation/destruction is via ledger flows only.
+//we need to implement functionality here that enables the ledger to call transfer,mint,burn events at will with whatever parameters it wants.
+
+    modifier onlyLedger() {
+        require(msg.sender == ledger, "Only ledger can call this function");
+        _;
+    }
+
+    function notifyTransfer(address from, address to, uint256 amount) external onlyLedger {
+        emit Transfer(from, to, amount);
+    }
+
 }

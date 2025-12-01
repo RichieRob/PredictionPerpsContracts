@@ -179,7 +179,13 @@ library SolvencyLib {
         if (effMin <= 0) return;
 
         int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
-        if (netAlloc <= 0) return; // No real capital to pull out
+
+
+
+         // 🔒 For the DMM we still require positive real allocation.
+    // For normal traders we allow netAlloc <= 0 (your new semantics).
+   
+
 
         uint256 amount = uint256(effMin);
 

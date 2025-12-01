@@ -28,7 +28,7 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      allowUnlimitedContractSize: false, 
+      allowUnlimitedContractSize: true, 
         },
 
         sepolia: {

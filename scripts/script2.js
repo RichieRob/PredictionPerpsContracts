@@ -57,7 +57,6 @@ async function main() {
     console.log("✅ LMSR allowed as DMM");
   } catch (err) {
     console.error("❌ allowDMM reverted:", err.message);
-    console.error("   ➜ Most likely: caller is not whatever 'owner' / governor your Ledger uses.");
     return;
   }
 
@@ -86,7 +85,6 @@ async function main() {
     );
     const receipt = await tx.wait();
 
-    // Decode MarketCreated event
     let parsed;
     for (const log of receipt.logs) {
       try {
@@ -95,9 +93,7 @@ async function main() {
           parsed = ev;
           break;
         }
-      } catch (_) {
-        // not a Ledger event, ignore
-      }
+      } catch (_) {}
     }
 
     if (!parsed) {
@@ -108,12 +104,11 @@ async function main() {
     console.log(`🎉 Market created with ID: ${marketId.toString()}`);
   } catch (err) {
     console.error("❌ createMarket reverted:", err.message);
-    console.error("   ➜ Common cause: DMM not allowed (allowDMM failed or used wrong address).");
     return;
   }
 
   // ------------------------------------------------------------
-  // 6) Create 7 positions
+  // 6) Create 7 positions on the LEDGER
   // ------------------------------------------------------------
   const positions = [
     { name: "Position 1", ticker: "POS1" },
@@ -134,7 +129,39 @@ async function main() {
     return;
   }
 
-  // Save LMSR and market details
+  // ------------------------------------------------------------
+  // 7) Initialise LMSR for this market
+  // ------------------------------------------------------------
+
+  // Get the ledger position IDs we just created
+  const positionIds = await ledger.getMarketPositions(marketId);
+  console.log(
+    "ℹ️ Ledger position IDs for LMSR init:",
+    positionIds.map((id) => id.toString())
+  );
+
+  // Equal priors, 1.0 each in 1e18
+  const priorR = ethers.parseUnits("1", 18);
+
+  // Solidity tuple is (uint256 ledgerPositionId, int256 r)
+  const initialPositions = positionIds.map((id) => [id, priorR]);
+
+  // Reserve mass scale (you've used 1e18 in tests)
+  const reserve0 = ethers.parseUnits("1", 18);
+
+  const txInit = await lmsr.initMarket(
+    marketId,
+    initialPositions,
+    iscAmount,   // liabilityUSDC = ISC
+    reserve0,
+    true        // isExpanding
+  );
+  await txInit.wait();
+  console.log("✅ LMSR initialised for market", marketId.toString());
+
+  // ------------------------------------------------------------
+  // 8) Save LMSR + market details
+  // ------------------------------------------------------------
   const lmsrData = {
     LMSRMarketMaker: lmsr.target,
     marketId: marketId.toString(),

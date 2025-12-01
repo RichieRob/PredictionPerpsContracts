@@ -95,11 +95,21 @@ function setLedger(address newLedger) external onlyOwner {
 
     // --- Called BY ledger when it conceptually mints/burns freeCollateral ---
 
+        function _notifyTransfer(address from, address to, uint256 amount) internal {
+        emit Transfer(from, to, amount);
+    }
+    
     function externalMint(address to, uint256 amount) external onlyLedger {
-        emit Transfer(address(0), to, amount);
+        _notifyTransfer(address(0), to, amount);
     }
 
     function externalBurn(address from, uint256 amount) external onlyLedger {
-        emit Transfer(from, address(0), amount);
+        _notifyTransfer(from, address(0), amount);
     }
+
+
+        function notifyTransfer(address from, address to, uint256 amount) external onlyLedger {
+        _notifyTransfer(from,to,amount);
+    }
+
 }

@@ -600,6 +600,17 @@ function withdraw(uint256 amount, address to) external {
 
 //ERC20 Transfers
 
+
+    function transferPosition(
+        address to,
+        uint256 marketId,
+        uint256 positionId,
+        bool isBack,
+        uint256 amount
+    ) external {
+        PositionTransferLib.transferPosition(msg.sender,to,marketId,positionId,isBack,amount);
+    }
+
 function positionERC20Transfer(
     address from,
     address to,
@@ -680,70 +691,70 @@ function resolveMarket(uint256 marketId, uint256 winningPositionId)
 // EXPOSE LIBRARY FOR TESTS
 
 
-// function invariant_marketAccounting(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 lhs, uint256 rhs)
-// {
-//     return LedgerInvariantViews.marketAccounting(marketId);
-// }
+function invariant_marketAccounting(uint256 marketId)
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.marketAccounting(marketId);
+}
 
-// function invariant_iscWithinLine(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 used, uint256 line)
-// {
-//     StorageLib.Storage storage s = StorageLib.getStorage();
-//     used = LedgerInvariantViews.iscSpent(marketId);
-//     line = s.syntheticCollateral[marketId];
-// }
+function invariant_iscWithinLine(uint256 marketId)
+    external
+    view
+    returns (uint256 used, uint256 line)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    used = LedgerInvariantViews.iscSpent(marketId);
+    line = s.syntheticCollateral[marketId];
+}
 
-// function invariant_effectiveMin(address account, uint256 marketId)
-//     external
-//     view
-//     returns (int256 effMin)
-// {
-//     return LedgerInvariantViews.effectiveMinShares(account, marketId);
-// }
+function invariant_effectiveMin(address account, uint256 marketId)
+    external
+    view
+    returns (int256 effMin)
+{
+    return LedgerInvariantViews.effectiveMinShares(account, marketId);
+}
 
-// function invariant_systemFunding(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 fullSetsSystem)
-// {
-//     return LedgerInvariantViews.totalFullSets(marketId);
-// }
+function invariant_systemFunding(uint256 marketId)
+    external
+    view
+    returns (uint256 fullSetsSystem)
+{
+    return LedgerInvariantViews.totalFullSets(marketId);
+}
 
-// function invariant_tvl()
-//     external
-//     view
-//     returns (uint256 tvl, uint256 aUSDCBalance)
-// {
-//     return LedgerInvariantViews.tvlAccounting();
-// }
+function invariant_tvl()
+    external
+    view
+    returns (uint256 tvl, uint256 aUSDCBalance)
+{
+    return LedgerInvariantViews.tvlAccounting();
+}
 
-// function invariant_systemBalance()
-//     external
-//     view
-//     returns (uint256 lhs, uint256 rhs)
-// {
-//     return LedgerInvariantViews.systemBalance();
-// }
+function invariant_systemBalance()
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.systemBalance();
+}
 
-// function invariant_checkSolvencyAllMarkets(address account)
-//     external
-//     view
-//     returns (bool ok)
-// {
-//     return LedgerInvariantViews.checkSolvencyAllMarkets(account);
-// }
+function invariant_checkSolvencyAllMarkets(address account)
+    external
+    view
+    returns (bool ok)
+{
+    return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+}
 
-// function invariant_redeemabilityState(address account, uint256 marketId)
-//     external
-//     view
-//     returns (int256 netAlloc, int256 redeemable, int256 margin)
-// {
-//     return LedgerInvariantViews.redeemabilityState( account, marketId);
-// }
+function invariant_redeemabilityState(address account, uint256 marketId)
+    external
+    view
+    returns (int256 netAlloc, int256 redeemable, int256 margin)
+{
+    return LedgerInvariantViews.redeemabilityState( account, marketId);
+}
 
 }

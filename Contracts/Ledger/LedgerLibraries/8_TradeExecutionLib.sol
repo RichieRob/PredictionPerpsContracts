@@ -30,14 +30,13 @@ library TradeExecutionLib {
 
         // trader pays usdcIn, receives t tokens from mm
         SettlementLib.settleWithFlash(
-            trader,
-            mm,
+            trader, // payer (pays quote)
+            mm,     // payee
             marketId,
             positionId,
             isBack,
-            t,
-            usdcIn,
-            /* payerReceivesPosition = */ true
+            t,       // baseAmount
+            usdcIn   // quoteAmount
         );
     }
 
@@ -68,73 +67,69 @@ library TradeExecutionLib {
             positionId,
             isBack,
             tokensOut,
-            usdcIn,
-            /* payerReceivesPosition = */ true
+            usdcIn
         );
     }
 
-   function sellExactTokens(
-    address trader,
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 t,
-    uint256 minUSDCOut
-) internal {
-    require(t > 0, "t=0");
+    function sellExactTokens(
+        address trader,
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 t,
+        uint256 minUSDCOut
+    ) internal {
+        require(t > 0, "t=0");
 
-    uint256 usdcOut = IMarketMaker(mm).applySellExactTokens(
-        marketId,
-        positionId,
-        isBack,
-        t,
-        minUSDCOut
-    );
+        uint256 usdcOut = IMarketMaker(mm).applySellExactTokens(
+            marketId,
+            positionId,
+            isBack,
+            t,
+            minUSDCOut
+        );
 
-    // mm pays usdcOut, receives t tokens from trader
-    SettlementLib.settleWithFlash(
-        mm,
-        trader,
-        marketId,
-        positionId,
-        isBack,
-        t,
-        usdcOut,
-        /* payerReceivesPosition = */ true   // ✅ was false
-    );
-}
+        // mm pays usdcOut, receives t tokens from trader
+        SettlementLib.settleWithFlash(
+            mm,      // payer
+            trader,  // payee
+            marketId,
+            positionId,
+            isBack,
+            t,
+            usdcOut
+        );
+    }
 
-function sellForUSDC(
-    address trader,
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 usdcOut,
-    uint256 maxTokensIn
-) internal {
-    require(usdcOut > 0, "usdcOut=0");
+    function sellForUSDC(
+        address trader,
+        address mm,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 usdcOut,
+        uint256 maxTokensIn
+    ) internal {
+        require(usdcOut > 0, "usdcOut=0");
 
-    uint256 tokensIn = IMarketMaker(mm).applySellForUSDC(
-        marketId,
-        positionId,
-        isBack,
-        usdcOut,
-        maxTokensIn
-    );
+        uint256 tokensIn = IMarketMaker(mm).applySellForUSDC(
+            marketId,
+            positionId,
+            isBack,
+            usdcOut,
+            maxTokensIn
+        );
 
-    // mm pays usdcOut, receives tokensIn from trader
-    SettlementLib.settleWithFlash(
-        mm,
-        trader,
-        marketId,
-        positionId,
-        isBack,
-        tokensIn,
-        usdcOut,
-        /* payerReceivesPosition = */ true   // ✅ was false
-    );
-}
-
+        // mm pays usdcOut, receives tokensIn from trader
+        SettlementLib.settleWithFlash(
+            mm,
+            trader,
+            marketId,
+            positionId,
+            isBack,
+            tokensIn,
+            usdcOut
+        );
+    }
 }

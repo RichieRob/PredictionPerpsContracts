@@ -57,8 +57,8 @@ library FillIntentLib {
             intent.positionId,
             intent.isBack,
             fillPrimary,
-            fillQuote,
-            /* payerReceivesPosition = */ true
+            fillQuote
+
         );
     }
 

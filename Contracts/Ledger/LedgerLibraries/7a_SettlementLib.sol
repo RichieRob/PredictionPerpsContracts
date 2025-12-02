@@ -10,7 +10,7 @@ library SettlementLib {
     /// @dev Generic settlement helper with a flash-loan-style bump on the payer.
     /// - payer: side that ultimately pays `quoteAmount` (gets temporary realFreeCollateral boost)
     /// - payee: side that receives `quoteAmount`
-    /// - payerReceivesPosition: if true, positions flow payee -> payer, else payer -> payee
+    /// - Positions always flow payee -> payer (payer receives the baseAmount).
     function settleWithFlash(
         address payer,
         address payee,
@@ -18,8 +18,7 @@ library SettlementLib {
         uint256 positionId,
         bool    isBack,
         uint256 baseAmount,   // tokens
-        uint256 quoteAmount,  // ppUSDC / USDC
-        bool    payerReceivesPosition
+        uint256 quoteAmount   // ppUSDC / USDC
     ) internal {
         require(payer != address(0), "payer=0");
         require(payee != address(0), "payee=0");
@@ -32,34 +31,20 @@ library SettlementLib {
         s.realFreeCollateral[payer] += quoteAmount;
         s.realTotalFreeCollateral   += quoteAmount;
 
-        // 1) Position delta
-        if (payerReceivesPosition) {
-            // payee -> payer
-            PositionTransferLib.transferPosition(
-                payee,
-                payer,
-                marketId,
-                positionId,
-                isBack,
-                baseAmount
-            );
-        } else {
-            // payer -> payee
-            PositionTransferLib.transferPosition(
-                payer,
-                payee,
-                marketId,
-                positionId,
-                isBack,
-                baseAmount
-            );
-        }
+        // 1) Position delta: payee -> payer
+        PositionTransferLib.transferPosition(
+            payee,
+            payer,
+            marketId,
+            positionId,
+            isBack,
+            baseAmount
+        );
 
         // 2) Net cash settlement: payer pays payee
         FreeCollateralLib.transferFreeCollateral(payer, payee, quoteAmount);
 
-        // 3) Solvency on both sides.
-        // Order: payee first, then payer (roughly matches your existing patterns).
+        // 3) Solvency checks (payee first, then payer)
         SolvencyLib.ensureSolvency(payee, marketId);
         SolvencyLib.deallocateExcess(payee, marketId);
 

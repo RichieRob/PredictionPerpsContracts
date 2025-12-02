@@ -21,7 +21,6 @@ import "./LedgerLibraries/5_LedgerInvariantViews.sol";
 import "./LedgerLibraries/6_ResolutionLib.sol";
 import "./LedgerLibraries/7_DepositWithdrawLib.sol";
 import "./LedgerLibraries/7_PositionTransferLib.sol";
-import "./LedgerLibraries/8_TradeExecutionLib.sol";
 import "./LedgerLibraries/8_ERC20BridgeLib.sol";
 import "./LedgerLibraries/8_FillIntentLib.sol";
 import "./LedgerLibraries/9_TradeRouterLib.sol";

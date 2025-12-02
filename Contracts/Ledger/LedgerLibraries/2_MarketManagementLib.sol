@@ -29,8 +29,7 @@ library MarketManagementLib {
     uint256 iscAmount,
     bool doesResolve,
     address oracle,
-    bytes calldata oracleParams,
-    bool isSmall // 🆕
+    bytes calldata oracleParams
 ) internal returns (uint256 marketId) {
     StorageLib.Storage storage s = StorageLib.getStorage();
 
@@ -57,7 +56,6 @@ library MarketManagementLib {
     s.marketOracle[marketId]     = oracle;
     s.marketOracleParams[marketId] = oracleParams;
 
-    s.isSmallMarket[marketId] = isSmall; // 🆕
 
     emit MarketCreated(marketId, name, ticker);
     emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
@@ -79,13 +77,7 @@ library MarketManagementLib {
 
     require(s.isExpanding[marketId], "Market locked");
 
-    if (s.isSmallMarket[marketId]) {
-        // Enforce hard cap
-        require(
-            s.nextPositionId[marketId] < 8,
-            "small market: max positions reached"
-        );
-    }
+
 
     positionId = s.nextPositionId[marketId]++;
     s.marketPositions[marketId].push(positionId);

@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./3a_TiltRouterLib.sol";
+import "./3_HeapLib.sol";
 import "./2_MarketManagementLib.sol";
 import "./4_SolvencyLib.sol";
 
@@ -96,7 +96,7 @@ function getCreatedShares(address account, uint256 marketId, uint256 positionId)
 
 
     function getMinTilt(address account, uint256 marketId) internal view returns (int256 minTilt, uint256 minPositionId) {
-        return TiltRouterLib.getMinTilt(account, marketId);
+        return HeapLib.getMinTilt(account, marketId);
     }
 
     function getMaxTilt(address account, uint256 marketId) internal view returns (int256 maxTilt, uint256 maxPositionId) {

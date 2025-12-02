@@ -35,9 +35,7 @@ async function setupMarketFixture() {
     iscAmount,
     false,             // doesResolve = false
     ethers.ZeroAddress,
-    "0x",
-    false
-  );
+    "0x"  );
 
   const markets = await ledger.getMarkets();
   fx.marketId = markets[0];

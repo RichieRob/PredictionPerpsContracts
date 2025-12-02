@@ -69,8 +69,7 @@ async function createLmsrMarket(fx, opts = {}) {
     iscAmount,
     false,               // doesResolve
     ethers.ZeroAddress,  // oracle
-    "0x",                // oracleParams
-    smallMarket          // smallMarket flag
+    "0x"         // smallMarket flag
   );
 
   const markets = await ledger.getMarkets();

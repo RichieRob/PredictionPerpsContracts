@@ -32,9 +32,7 @@ async function setupMultiMarketFixture() {
     ISC_LINE_1,
     false,
     ethers.ZeroAddress,
-    "0x",
-    false
-  );
+    "0x"  );
 
   // Market 2
   await ledger.createMarket(
@@ -44,9 +42,7 @@ async function setupMultiMarketFixture() {
     ISC_LINE_2,
     false,
     ethers.ZeroAddress,
-    "0x",
-    false
-  );
+    "0x"  );
 
   const markets = await ledger.getMarkets();
   expect(markets.length).to.equal(2);

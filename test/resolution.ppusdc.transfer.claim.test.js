@@ -125,8 +125,7 @@ describe(
         0,
         true, // doesResolve = true
         await oracle.getAddress(),
-        "0x",
-        false
+        "0x"
       );
 
       marketId = (await fx.ledger.getMarkets())[0];

@@ -76,8 +76,8 @@ contract Ledger {
 
     // --- market / position management  ---
     
-    function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount, bool doesResolve, address oracle, bytes calldata oracleParams, bool isSmallMarket ) external onlyOwner returns (uint256 marketId) {
-        marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount, doesResolve, oracle, oracleParams, isSmallMarket);
+    function createMarket(string memory name, string memory ticker, address dmm, uint256 iscAmount, bool doesResolve, address oracle, bytes calldata oracleParams ) external onlyOwner returns (uint256 marketId) {
+        marketId = MarketManagementLib.createMarket(name, ticker, dmm, iscAmount, doesResolve, oracle, oracleParams);
     }
 
 function createPosition(

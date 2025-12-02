@@ -81,8 +81,7 @@ async function main() {
       iscAmount,
       doesResolve,
       oracle,
-      oracleParams,
-      true
+      oracleParams
     );
     const receipt = await tx.wait();
 

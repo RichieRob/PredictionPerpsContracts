@@ -24,9 +24,7 @@ async function createMarketWithDetails(fx, {
     iscAmount,
     false,             // doesResolve
     ethers.ZeroAddress,
-    "0x",
-    false
-  );
+    "0x"  );
   await tx.wait();
 
   const markets = await ledger.getMarkets();

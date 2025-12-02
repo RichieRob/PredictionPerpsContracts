@@ -31,9 +31,7 @@ async function setupLmsrLedgerFixture() {
     iscAmount,
     false,              // doesResolve = false
     ethers.ZeroAddress, // oracle
-    "0x",
-    false
-  );
+    "0x"  );
 
   const markets = await ledger.getMarkets();
   expect(markets.length).to.equal(1);

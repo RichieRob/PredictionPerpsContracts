@@ -24,9 +24,7 @@ describe("MarketMakerLedger – Oracle driven resolution", () => {
       0,
       true,
       oracle.getAddress(),
-      "0x",
-      false
-    );
+      "0x"    );
 
     marketId = (await fx.ledger.getMarkets())[0];
 

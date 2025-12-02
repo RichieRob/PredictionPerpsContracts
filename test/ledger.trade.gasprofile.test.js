@@ -76,9 +76,7 @@ async function createLmsrMarket({ owner, ledger, lmsr }, opts = {}) {
     iscAmount,
     false,
     ethers.ZeroAddress,
-    "0x",
-    false
-  );
+    "0x"  );
 
   const markets = await ledger.getMarkets();
   const marketId = markets[markets.length - 1];

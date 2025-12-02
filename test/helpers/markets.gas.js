@@ -1,15 +1,25 @@
 // test/helpers/markets.gas.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { usdc, mintAndDeposit } = require("./core");
+const { createLmsrMarket } = require("./markets.lmsr");
 
-// Gas: market + N positions
-async function expectGasForMarketWithPositions(fx, {
-  marketName,
-  marketTicker,
-  dmmAddress,
-  iscAmount = 0n,
-  positions,
-}) {
+const U = (n) => usdc(String(n));
+
+// ──────────────────────────────────────
+// Simple gas helper: market + N positions
+// ──────────────────────────────────────
+
+async function expectGasForMarketWithPositions(
+  fx,
+  {
+    marketName,
+    marketTicker,
+    dmmAddress,
+    iscAmount = 0n,
+    positions,
+  }
+) {
   const { ledger, owner } = fx;
 
   // Make sure the DMM is allowed before creating the market
@@ -21,10 +31,9 @@ async function expectGasForMarketWithPositions(fx, {
     marketTicker,
     dmmAddress,
     iscAmount,
-    false,             // doesResolve
-    ethers.ZeroAddress,
-    "0x",
-    false
+    false,              // doesResolve
+    ethers.ZeroAddress, // oracle
+    "0x"                // oracleParams
   );
   const createMarketReceipt = await createMarketTx.wait();
   console.log(
@@ -93,20 +102,9 @@ async function expectGasForMarketWithPositions(fx, {
   };
 }
 
-module.exports = {
-  expectGasForMarketWithPositions,
-};
-
-// test/helpers/markets.gas.js
-
-const { usdc, mintAndDeposit } = require("./core");
-const { createLmsrMarket } = require("./markets.lmsr");
-
-const U = (n) => usdc(String(n));
-
 // ──────────────────────────────────────
-// shared gas helpers
-// ──────────────────────────────────────
+// Shared hammer helpers
+// ─────────────────────────────────────-
 
 async function gasOf(txPromise) {
   const tx = await txPromise;
@@ -397,6 +395,10 @@ async function runSizeGasHammer(fx, largeN, options = {}) {
 }
 
 module.exports = {
+  expectGasForMarketWithPositions,
+  gasOf,
+  recordGasWithFirst,
+  recordGasWithFirstIgnoreRevert,
+  printGasStats,
   runSizeGasHammer,
 };
-

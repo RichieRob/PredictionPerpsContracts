@@ -26,9 +26,7 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       0n,
       false,
       ethers.ZeroAddress,
-      "0x",
-      false
-    );
+      "0x"    );
 
     const markets = await fx.ledger.getMarkets();
     fx.marketId = markets[0];

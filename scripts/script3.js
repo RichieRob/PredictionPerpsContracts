@@ -43,8 +43,7 @@ async function main() {
     iscAmount,            // iscAmount
     false,                // doesResolve
     ethers.ZeroAddress,   // oracle
-    "0x",                  // oracleParams
-    true
+    "0x"
   );
   await txMarket.wait();
   console.log("⚽ Footie market created");

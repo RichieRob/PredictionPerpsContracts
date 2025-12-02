@@ -46,8 +46,7 @@ async function setupLmsr() {
       InitialPosition,
       liabilityUSDC,
       0,
-      false
-    );
+    false    );
 
   return { owner, trader, governor, amm, ledger, marketId, posA, posB, liabilityUSDC };
 }

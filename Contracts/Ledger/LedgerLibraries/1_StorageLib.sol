@@ -143,7 +143,6 @@ library StorageLib {
         uint256[] allMarkets;
         mapping(uint256 => uint256) nextPositionId;
         mapping(uint256 => uint256[]) marketPositions;
-        mapping(uint256 => bool) isSmallMarket; // Introdue Linear scan for 8 or less position markets for gas optimisation
 
 
         // Permits

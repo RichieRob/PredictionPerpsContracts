@@ -212,6 +212,12 @@ mapping(uint256 => uint256) winningPositionId; // for resolved markets gives the
 mapping(address => uint256[]) userMarkets; // The non claimed from markets that the user has touched. Array 
 mapping(address => mapping (uint256 => uint256)) userMarketIndex; // position of a market in the userMarkets array  // using 1 for raw index 0
 
+// Global count of resolved markets (resolving ones only).
+uint256 totalResolvedMarkets;
+
+// Per-user last seen value of totalResolvedMarkets
+mapping(address => uint256) userLastResolvedSeen;
+
 // Delta between realTotalFreeCollateral and effective total
 // (which includes unclaimed winnings in resolved markets).
 // Invariant:

@@ -137,17 +137,15 @@ library MarketManagementLib {
     // -------------------------------------------------------------
     /// @notice Checks if a positionId is registered under a given marketId.
     /// @dev Loops through s.marketPositions[marketId]; O(n), but fine for view checks.
-    function positionExists(uint256 marketId, uint256 positionId)
-        internal
-        view
-        returns (bool)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256[] storage positions = s.marketPositions[marketId];
-        for (uint256 i = 0; i < positions.length; i++) {
-            if (positions[i] == positionId) return true;
-        }
-        return false;
-    }
+function positionExists(uint256 marketId, uint256 positionId)
+    internal
+    view
+    returns (bool)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    // valid if we've already allocated this positionId in this market
+    return positionId < s.nextPositionId[marketId];
+}
+
 }
 

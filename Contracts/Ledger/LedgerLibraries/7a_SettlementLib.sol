@@ -27,8 +27,8 @@ library SettlementLib {
 
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        // 0) Flash loan to payer
-        s.realFreeCollateral[payer] += quoteAmount;
+        // 0) Flash loan
+        s.realFreeCollateral[payee] += quoteAmount;
         s.realTotalFreeCollateral   += quoteAmount;
 
         // 1) Position delta: payee -> payer
@@ -41,21 +41,14 @@ library SettlementLib {
             baseAmount
         );
 
-        // 2) Net cash settlement: payer pays payee
-        FreeCollateralLib.transferFreeCollateral(payer, payee, quoteAmount);
 
         // 3) Solvency checks (payee first, then payer)
-        SolvencyLib.ensureSolvency(payee, marketId);
-        SolvencyLib.deallocateExcess(payee, marketId);
-
-        SolvencyLib.ensureSolvency(payer, marketId);
-        SolvencyLib.deallocateExcess(payer, marketId);
+        SolvencyLib.rebalanceFull(payee, marketId);
+        SolvencyLib.rebalanceFull(payer, marketId);
 
         // 4) Repay flash loan
         s.realFreeCollateral[payer] -= quoteAmount;
-        require(s.realFreeCollateral[payer] >= 0, "Flash loan repayment failed");
 
         s.realTotalFreeCollateral   -= quoteAmount;
-        require(s.realTotalFreeCollateral >= 0, "Flash loan repayment failed");
     }
 }

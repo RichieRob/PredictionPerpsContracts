@@ -8,43 +8,27 @@ import "./2_MarketManagementLib.sol";
 
 /// @title SolvencyLib
 /// @notice All the "mathy" rules that keep an account solvent in a market.
-/// @dev There are really two constraints:
-///
+/// @dev Two constraints:
 ///  1. WORST-CASE LIABILITY (solvency):
-///       - "How many full sets could the account be forced to pay in
-///          the worst outcome of this market?"
-///       - This is `realMinShares` (ignoring ISC) and `effMinShares`
-///         (including the DMM's synthetic line).
-///       - We enforce: `effectiveMinShares >= 0`.
-///
+///       effMin >= 0
 ///  2. BEST-CASE CLAIM (redeemability):
-///       - "How many full sets could the account *redeem* if it pushes
-///          its most favourable position to the limit?"
-///       - This is `redeemable`.
-///       - We enforce: `netUSDCAllocation >= redeemable`.
-///
-///       For the DMM this is essential:
-///         → the DMM must **never** end up in a state where it has issued
-///            more *redeemable* full sets to others than the real USDC it has
-///            actually allocated into the market.  
-///
-///  The two public entrypoints are:
-///       - ensureSolvency()    → may ALLOCATE capital into the market
-///       - deallocateExcess()  → may DEALLOCATE capital back to freeCollateral
-///
-///  Both are written so that if they run after any operation, the account
-///  ends up satisfying both constraints.
+///       netAlloc >= redeemable
 library SolvencyLib {
 
+    struct State {
+        int256 realMin;     // realMinShares
+        int256 effMin;      // effectiveMinShares (with ISC for DMM)
+        int256 netAlloc;    // spent - redeemed
+        int256 redeemable;  // best-case claimable full sets
+        bool   isDMM;
+    }
+
+    // -----------------------------------------------------------------------
+    // Core helpers
+    // -----------------------------------------------------------------------
+
     /// @notice Signed "real capital" the account has in this market.
-    /// @dev
-    ///   spent    = total USDC ever allocated into this market  
-    ///   redeemed = total USDC ever deallocated / redeemed out  
-    ///
-    ///   netAlloc = spent - redeemed  
-    ///
-    /// For normal flows this will be >= 0. It is signed mainly to make
-    /// algebra convenient.
+    ///         netAlloc = spent - redeemed.
     function _netUSDCAllocationSigned(
         StorageLib.Storage storage s,
         address account,
@@ -52,20 +36,12 @@ library SolvencyLib {
     ) internal view returns (int256) {
         uint256 spent    = s.USDCSpent[account][marketId];
         uint256 redeemed = s.redeemedUSDC[account][marketId];
-
         return int256(spent) - int256(redeemed);
     }
 
     /// @notice Worst-case number of full sets this account might have to pay
     ///         if the market goes against them, ignoring any synthetic line.
-    /// @dev
-    ///   realMinShares = netAlloc + layOffset + minTilt
-    ///
-    ///   - netAlloc    = spent - redeemed   (real USDC tied to this market)
-    ///   - layOffset   = net Lay exposure (more Lay received than sent)
-    ///   - minTilt     = worst (minimum) position tilt over all outcomes
-    ///
-    /// This is the “pure real” liability, before we grant the DMM any ISC.
+    /// realMinShares = netAlloc + layOffset + minTilt.
     function computeRealMinShares(
         StorageLib.Storage storage s,
         address account,
@@ -77,14 +53,8 @@ library SolvencyLib {
     }
 
     /// @notice Effective min shares after adding the synthetic line for the DMM.
-    /// @dev
-    ///  For normal accounts:
-    ///      effMin = realMinShares.
-    ///
-    ///  For the DMM in this market:
-    ///      effMin = realMinShares + syntheticCollateral[marketId].
-    ///
-    ///  The key solvency condition is: effMin >= 0.
+    /// For normal accounts: effMin = realMinShares.
+    /// For the DMM in this market: effMin = realMinShares + syntheticCollateral[marketId].
     function computeEffectiveMinShares(
         StorageLib.Storage storage s,
         address account,
@@ -98,22 +68,7 @@ library SolvencyLib {
     }
 
     /// @notice Best-case number of full sets an account can redeem from this market.
-    /// @dev
-    ///   - maxTilt = the *maximum* tilt across positions (most favourable leg)
-    ///   - layOffset = net Lay flow
-    ///
-    ///   We derive:
-    ///       redeemable = -layOffset - maxTilt
-    ///
-    ///   For the DMM this value represents:
-    ///       → the number of full sets the world could *claim* from the DMM
-    ///         in the best-case outcome for everyone else.
-    ///
-    ///   And enforce:
-    ///       netUSDCAllocation >= redeemable
-    ///
-    ///   Preventing the DMM from ever issuing more redeemable full sets
-    ///   than it has real USDC backing the market.
+    /// redeemable = -layOffset - maxTilt.
     function computeRedeemable(
         StorageLib.Storage storage s,
         address account,
@@ -123,69 +78,89 @@ library SolvencyLib {
         return -s.layOffset[account][marketId] - int256(maxTilt);
     }
 
-    /// @notice Main guard: ensure an account is solvent and redeemable for a market.
-    /// @dev This can only move real capital *into* the market (allocate).
-    ///
-    /// After running:
-    ///      effMin >= 0  
-    ///      netAlloc >= redeemable  
-    function ensureSolvency(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
+    // -----------------------------------------------------------------------
+    // State loading + shared rebalance
+    // -----------------------------------------------------------------------
 
-        int256 realMin = computeRealMinShares(s, account, marketId);
-        int256 effMin  = computeEffectiveMinShares(s, account, marketId, realMin);
+    /// @dev Load all solvency state in one go so we don't re-hit heaps / mappings.
+    function _loadState(
+        StorageLib.Storage storage s,
+        address account,
+        uint256 marketId
+    ) private view returns (State memory st) {
+        st.isDMM    = MarketManagementLib.isDMM(account, marketId);
+
+        // realMin and netAlloc
+        (int256 minTilt, ) = HeapLib.getMinTilt(account, marketId);
+        st.netAlloc = _netUSDCAllocationSigned(s, account, marketId);
+        st.realMin  = st.netAlloc + s.layOffset[account][marketId] + int256(minTilt);
+
+        // effMin with ISC if DMM
+        uint256 isc = st.isDMM ? s.syntheticCollateral[marketId] : 0;
+        st.effMin   = st.realMin + int256(isc);
+
+        // redeemable (best-case full sets)
+        (int256 maxTilt, ) = HeapLib.getMaxTilt(account, marketId);
+        st.redeemable = -s.layOffset[account][marketId] - int256(maxTilt);
+    }
+
+    /// @dev Internal shared rebalance. Depending on flags, it:
+    ///  - can allocate into the market (fix effMin < 0 and/or netAlloc < redeemable)
+    ///  - can deallocate excess capital (if effMin > 0, within redeemability & DMM constraints).
+    function _rebalance(
+        address account,
+        uint256 marketId,
+        bool allowAllocate,
+        bool allowDeallocate
+    ) private {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        State memory st = _loadState(s, account, marketId);
 
         // ---------------------------------------------------------
         // 1) SOLVENCY: effMin >= 0
         // ---------------------------------------------------------
-        if (effMin < 0) {
-            uint256 shortfall = uint256(-effMin);
+        if (allowAllocate && st.effMin < 0) {
+            uint256 shortfall = uint256(-st.effMin);
             AllocateCapitalLib.allocate(account, marketId, shortfall);
+
+            // keep State in sync without re-reading:
+            st.realMin  += int256(shortfall);
+            st.effMin   += int256(shortfall);
+            st.netAlloc += int256(shortfall);
         }
 
         // ---------------------------------------------------------
         // 2) REDEEMABILITY: netAlloc >= redeemable
         // ---------------------------------------------------------
-        //
-        // "redeemable" = best-case number of full sets that could be
-        // claimed *against* this account.
-        //
-        // For the DMM this condition ensures:
-        //   → the DMM never issues more redeemable full sets than it has
-        //     real USDC actually backing the market (netAlloc).
-        int256 redeemable = computeRedeemable(s, account, marketId);
-        if (redeemable > 0) {
-            int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
-            if (netAlloc < redeemable) {
-                uint256 diff = uint256(redeemable - netAlloc);
+        if (allowAllocate && st.redeemable > 0) {
+            int256 netAlloc = st.netAlloc; // after any allocation above
+            if (netAlloc < st.redeemable) {
+                uint256 diff = uint256(st.redeemable - netAlloc);
                 AllocateCapitalLib.allocate(account, marketId, diff);
+
+                st.realMin  += int256(diff);
+                st.effMin   += int256(diff);
+                st.netAlloc += int256(diff);
             }
         }
-    }
 
-    /// @notice Try to pull real capital back out of this market into freeCollateral.
-    /// @dev Only safe if BOTH:
-    ///         effMin >= 0
-    ///         netAlloc >= redeemable
-    ///
-    /// And for the DMM:
-    ///         must also not end up "floating" purely on ISC.
-    function deallocateExcess(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
+        // ---------------------------------------------------------
+        // 3) DEALLOCATE EXCESS (if allowed)
+        // ---------------------------------------------------------
+        if (!allowDeallocate) {
+            return;
+        }
 
-        int256 realMin = computeRealMinShares(s, account, marketId);
-        int256 effMin  = computeEffectiveMinShares(s, account, marketId, realMin);
+        // Recompute effMin/netAlloc/redeemable from state (already updated).
+        if (st.effMin <= 0) {
+            return;
+        }
 
-        if (effMin <= 0) return;
-
-        int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);   
-
-        uint256 amount = uint256(effMin);
+        uint256 amount = uint256(st.effMin);
 
         // Redeemability constraint: netAlloc >= redeemable
-        int256 redeemable = computeRedeemable(s, account, marketId);
-        if (redeemable > 0) {
-            int256 margin = netAlloc - redeemable;
+        if (st.redeemable > 0) {
+            int256 margin = st.netAlloc - st.redeemable;
             if (margin > 0) {
                 amount = _min(amount, uint256(margin));
             } else {
@@ -195,9 +170,9 @@ library SolvencyLib {
 
         // DMM constraint: if the DMM is leaning on ISC (realMin < 0),
         // they must not deallocate more than their remaining real stake.
-        if (MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
-            if (netAlloc > 0) {
-                amount = _min(amount, uint256(netAlloc));
+        if (st.isDMM && st.realMin < 0) {
+            if (st.netAlloc > 0) {
+                amount = _min(amount, uint256(st.netAlloc));
             } else {
                 amount = 0;
             }
@@ -207,6 +182,40 @@ library SolvencyLib {
             AllocateCapitalLib.deallocate(account, marketId, amount);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Public-facing entrypoints (same API as before)
+    // -----------------------------------------------------------------------
+
+    /// @notice Main guard: ensure an account is solvent and redeemable for a market.
+    /// @dev This can only move real capital *into* the market (allocate).
+    ///
+    /// After running:
+    ///      effMin >= 0
+    ///      netAlloc >= redeemable
+    function ensureSolvency(address account, uint256 marketId) internal {
+        _rebalance(account, marketId, true, false);
+    }
+
+    /// @notice Try to pull real capital back out of this market into freeCollateral.
+    /// @dev Only safe if BOTH:
+    ///         effMin >= 0
+    ///         netAlloc >= redeemable
+    ///      and, for the DMM, we don't end up purely on ISC.
+    function deallocateExcess(address account, uint256 marketId) internal {
+        _rebalance(account, marketId, false, true);
+    }
+
+    /// @notice Full rebalance: first allocate if needed, then deallocate any safe excess.
+    /// @dev This is what you eventually want to call once per account instead of
+    ///      `ensureSolvency` + `deallocateExcess` separately.
+    function rebalanceFull(address account, uint256 marketId) internal {
+        _rebalance(account, marketId, true, true);
+    }
+
+    // -----------------------------------------------------------------------
+    // Small helpers
+    // -----------------------------------------------------------------------
 
     function _min(uint256 a, uint256 b) private pure returns (uint256) {
         return a < b ? a : b;

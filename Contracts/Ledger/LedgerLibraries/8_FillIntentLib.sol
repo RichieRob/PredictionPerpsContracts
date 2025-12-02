@@ -52,6 +52,13 @@ library FillIntentLib {
             revert("BAD_KIND");
         }
 
+
+
+        // 0) Flash Loan to buyer
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        s.realFreeCollateral[buyer] += fillQuote;
+        s.realTotalFreeCollateral += fillQuote;  
+
         // --- 1) Move exposure (Back/Lay) seller -> buyer ---
         PositionTransferLib.transferPosition(
             seller,
@@ -66,11 +73,21 @@ library FillIntentLib {
         // Pure redistribution; no mint/burn, no TVL change.
         FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
 
-        //3)         
-        SolvencyLib.ensureSolvency(buyer, intent.marketId);
+        //3) Clear up Seller
         SolvencyLib.ensureSolvency(seller, intent.marketId);
-        SolvencyLib.deallocateExcess(buyer, intent.marketId);
         SolvencyLib.deallocateExcess(seller, intent.marketId);
+
+        // Clear up Buyer
+        SolvencyLib.ensureSolvency(buyer, intent.marketId);
+        SolvencyLib.deallocateExcess(buyer, intent.marketId);
+
+        //Repay Flash Loan
+        s.realFreeCollateral[buyer] -= fillQuote;  
+        require(s.realFreeCollateral[buyer] >= 0, "Flash loan repayment failed");
+        s.realTotalFreeCollateral -= fillQuote;  
+        require(s.realTotalFreeCollateral >= 0, "Flash loan repayment failed");
+
+
 
 
     }

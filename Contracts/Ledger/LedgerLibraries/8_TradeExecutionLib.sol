@@ -13,33 +13,48 @@ library TradeExecutionLib {
     //////////////////////////////////////////////////////////////*/
 
     function processBuy(
-        address trader,
-        address mm,
-        uint256 marketId,
-        uint256 positionId,
-        bool    isBack,
-        uint256 usdcIn,
-        uint256 tokensOut
-    ) internal {
-        // 1) Position delta first
-        PositionTransferLib.transferPosition(
-            mm,
-            trader,
-            marketId,
-            positionId,
-            isBack,
-            tokensOut
-        );
+    address trader,
+    address mm,
+    uint256 marketId,
+    uint256 positionId,
+    bool    isBack,
+    uint256 usdcIn,
+    uint256 tokensOut
+) internal {
+    StorageLib.Storage storage s = StorageLib.getStorage();
 
-        // 2) Net cash settlement: trader pays mm (ppUSDC move only)
-        FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
-        
-        // 3) Check both sides solvent still
-        SolvencyLib.ensureSolvency(trader, marketId);
-        SolvencyLib.ensureSolvency(mm, marketId);
-        SolvencyLib.deallocateExcess(trader, marketId);
-        SolvencyLib.deallocateExcess(mm, marketId);
-    }
+    // 0) Flash loan: boost trader freeCollateral
+    s.realFreeCollateral[trader] += usdcIn;
+    s.realTotalFreeCollateral += usdcIn;  
+    // 1) Position delta first
+    PositionTransferLib.transferPosition(
+        mm,
+        trader,
+        marketId,
+        positionId,
+        isBack,
+        tokensOut
+    );
+
+    // 2) Net cash settlement
+    FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
+
+    // Clean up mm side
+    SolvencyLib.ensureSolvency(mm, marketId);
+    SolvencyLib.deallocateExcess(mm, marketId);
+
+
+    // Clean up trader side
+    SolvencyLib.ensureSolvency(trader, marketId);
+    SolvencyLib.deallocateExcess(trader, marketId);  // Re-check mm post-trader changes
+
+   // 3) Repay flash loan
+    s.realFreeCollateral[trader] -= usdcIn;
+    require(s.realFreeCollateral[trader] >= 0, "Flash loan repayment failed");
+    s.realTotalFreeCollateral -= usdcIn;
+    require(s.realTotalFreeCollateral >= 0, "Flash loan repayment failed");
+
+}
 
     function processSell(
         address trader,
@@ -50,6 +65,14 @@ library TradeExecutionLib {
         uint256 tokensIn,
         uint256 usdcOut
     ) internal {
+
+        // 0) Flash Loan to mm
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        s.realFreeCollateral[mm] += usdcOut;  // Use int256 for safety
+        s.realTotalFreeCollateral += usdcOut;  
+
+
+
         // 1) Position delta first
         PositionTransferLib.transferPosition(
             trader,
@@ -63,11 +86,20 @@ library TradeExecutionLib {
         // 2) Net cash settlement: mm pays trader (ppUSDC move only)
         FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
 
-        // 3) Check both sides solvent still
+        // 3) Clear up trader side
         SolvencyLib.ensureSolvency(trader, marketId);
-        SolvencyLib.ensureSolvency(mm, marketId);
         SolvencyLib.deallocateExcess(trader, marketId);
+
+        // 3) Check both sides solvent still
+        SolvencyLib.ensureSolvency(mm, marketId);
         SolvencyLib.deallocateExcess(mm, marketId);
+
+        //4) Repay flashloan
+        s.realFreeCollateral[mm] -= usdcOut;
+          
+        require(s.realFreeCollateral[mm] >= 0, "Flash loan repayment failed");
+        s.realTotalFreeCollateral -= usdcOut;
+        require(s.realTotalFreeCollateral >= 0, "Flash loan repayment failed");
     }
 
     /*//////////////////////////////////////////////////////////////

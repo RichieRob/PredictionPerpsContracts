@@ -1,6 +1,7 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
+
+import "hardhat/console.sol"; // Add this
 
 import "./1_StorageLib.sol";
 import "./2_FreeCollateralLib.sol";
@@ -10,6 +11,8 @@ library AllocateCapitalLib {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.realFreeCollateral[account] >= amount, "Insufficient free collateral");
         
+        console.log("Allocating %s for %s in market %s", amount, account, marketId);
+
         // reduce the amount of free capital the account has
         FreeCollateralLib.burnPpUSDC(account, amount);
 
@@ -27,6 +30,9 @@ library AllocateCapitalLib {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.marketValue[marketId] >= amount, "Insufficient market value");
         
+        console.log("Deallocating %s for %s in market %s", amount, account, marketId);
+        console.log("Pre-dealloc marketValue = %s, TotalMarketsValue = %s", s.marketValue[marketId], s.TotalMarketsValue);
+
         // increase the amount of free capital the account has
         FreeCollateralLib.mintPpUSDC(account, amount);
 
@@ -34,7 +40,7 @@ library AllocateCapitalLib {
         s.redeemedUSDC[account][marketId] += amount;
         s.Redemptions[marketId] += amount;
 
-        //dececrease the value of the market appropriately 
+        //decrease the value of the market appropriately 
         s.marketValue[marketId] -= amount;
         s.TotalMarketsValue -= amount;
     }

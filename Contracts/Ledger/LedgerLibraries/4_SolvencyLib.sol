@@ -6,6 +6,8 @@ import "./3_HeapLib.sol";
 import "./3_AllocateCapitalLib.sol";
 import "./2_MarketManagementLib.sol";
 
+import "hardhat/console.sol"; // Add this
+
 /// @title SolvencyLib
 /// @notice All the "mathy" rules that keep an account solvent in a market.
 /// @dev There are really two constraints:
@@ -129,35 +131,30 @@ library SolvencyLib {
     /// After running:
     ///      effMin >= 0  
     ///      netAlloc >= redeemable  
-    function ensureSolvency(address account, uint256 marketId) internal {
+ function ensureSolvency(address account, uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
         int256 realMin = computeRealMinShares(s, account, marketId);
         int256 effMin  = computeEffectiveMinShares(s, account, marketId, realMin);
 
-        // ---------------------------------------------------------
+        console.log("ensureSolvency for %s: realMin = %s, effMin = %s", account, uint256(realMin), uint256(effMin));
+
         // 1) SOLVENCY: effMin >= 0
-        // ---------------------------------------------------------
         if (effMin < 0) {
             uint256 shortfall = uint256(-effMin);
+            console.log("Allocating shortfall: %s", shortfall);
             AllocateCapitalLib.allocate(account, marketId, shortfall);
         }
 
-        // ---------------------------------------------------------
         // 2) REDEEMABILITY: netAlloc >= redeemable
-        // ---------------------------------------------------------
-        //
-        // "redeemable" = best-case number of full sets that could be
-        // claimed *against* this account.
-        //
-        // For the DMM this condition ensures:
-        //   → the DMM never issues more redeemable full sets than it has
-        //     real USDC actually backing the market (netAlloc).
         int256 redeemable = computeRedeemable(s, account, marketId);
+        console.log("Redeemable = %s", uint256(redeemable));
         if (redeemable > 0) {
             int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
+            console.log("netAlloc = %s", uint256(netAlloc));
             if (netAlloc < redeemable) {
                 uint256 diff = uint256(redeemable - netAlloc);
+                console.log("Allocating redeemability diff: %s", diff);
                 AllocateCapitalLib.allocate(account, marketId, diff);
             }
         }
@@ -170,29 +167,38 @@ library SolvencyLib {
     ///
     /// And for the DMM:
     ///         must also not end up "floating" purely on ISC.
-    function deallocateExcess(address account, uint256 marketId) internal {
+function deallocateExcess(address account, uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
         int256 realMin = computeRealMinShares(s, account, marketId);
         int256 effMin  = computeEffectiveMinShares(s, account, marketId, realMin);
 
-        if (effMin <= 0) return;
+        console.log("deallocateExcess for %s: realMin = %s, effMin = %s", account, uint256(realMin), uint256(effMin));
+
+        if (effMin <= 0) {
+            console.log("No dealloc: effMin <=0");
+            return;
+        }
 
         int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);   
+        console.log("netAlloc = %s", uint256(netAlloc));
 
         uint256 amount = uint256(effMin);
+        console.log("Initial amount = %s", amount);
 
         // Redeemability constraint: netAlloc >= redeemable
         int256 redeemable = computeRedeemable(s, account, marketId);
+        console.log("Redeemable = %s", uint256(redeemable));
         if (redeemable > 0) {
             int256 margin = netAlloc - redeemable;
+            console.log("Margin = %s", uint256(margin));
             if (margin > 0) {
                 amount = _min(amount, uint256(margin));
             } else {
                 amount = 0;
             }
+            console.log("After redeemability: amount = %s", amount);
         }
-
         // DMM constraint: if the DMM is leaning on ISC (realMin < 0),
         // they must not deallocate more than their remaining real stake.
         if (MarketManagementLib.isDMM(account, marketId) && realMin < 0) {
@@ -201,10 +207,14 @@ library SolvencyLib {
             } else {
                 amount = 0;
             }
+            console.log("After DMM constraint: amount = %s", amount);
         }
 
         if (amount > 0) {
+            console.log("Deallocating: %s", amount);
             AllocateCapitalLib.deallocate(account, marketId, amount);
+        } else {
+            console.log("No dealloc: amount=0");
         }
     }
 

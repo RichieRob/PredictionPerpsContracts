@@ -62,16 +62,19 @@ library FillIntentLib {
             fillPrimary
         );
 
-        // --- 2) Move ppUSDC/freeCollateral buyer -> seller ---
-        // Pure redistribution; no mint/burn, no TVL change.
-        FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
-
-        //3)         
-        SolvencyLib.ensureSolvency(buyer, intent.marketId);
-        SolvencyLib.ensureSolvency(seller, intent.marketId);
+        // 3) Deallocate Excess before trying to move the free collateral
         SolvencyLib.deallocateExcess(buyer, intent.marketId);
         SolvencyLib.deallocateExcess(seller, intent.marketId);
 
+
+    //4) Move ppUSDC/freeCollateral buyer -> seller ---
+        // Pure redistribution; no mint/burn, no TVL change.
+        FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
+
+        //5)         
+        SolvencyLib.ensureSolvency(buyer, intent.marketId);
+        SolvencyLib.ensureSolvency(seller, intent.marketId);
+ 
 
     }
 

@@ -48,12 +48,5 @@ library FreeCollateralLib {
     }
 
     /// @notice Internal ppUSDC/freeCollateral transfer with NO events.
-    function transferFreeCollateral(address from, address to, uint256 amount) internal {
-        if (amount == 0 || from == to) return;
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.realFreeCollateral[from] >= amount, "Insufficient free collateral");
-        s.realFreeCollateral[from] -= amount;
-        s.realFreeCollateral[to]   += amount;
-        // realTotalFreeCollateral unchanged
-    }
+    // no freeCollateral transfer - we do flash loans and burns now
 }

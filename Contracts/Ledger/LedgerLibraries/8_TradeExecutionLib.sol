@@ -5,6 +5,7 @@ import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
 import "./4_SolvencyLib.sol";
 import "../Interfaces/IMarketMaker.sol";
+import "hardhat/console.sol"; // Add this
 
 library TradeExecutionLib {
 
@@ -12,7 +13,7 @@ library TradeExecutionLib {
                            INTERNAL HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function processBuy(
+   function processBuy(
         address trader,
         address mm,
         uint256 marketId,
@@ -31,15 +32,30 @@ library TradeExecutionLib {
             tokensOut
         );
 
-        // 2) Net cash settlement: trader pays mm (ppUSDC move only)
-        FreeCollateralLib.transferFreeCollateral(trader, mm, usdcIn);
-        
-        // 3) Check both sides solvent still
-        SolvencyLib.ensureSolvency(trader, marketId);
-        SolvencyLib.ensureSolvency(mm, marketId);
+        // Log state after position transfer
+        console.log("After position transfer: trader freeCollateral = %s, usdcIn = %s", StorageLib.getStorage().realFreeCollateral[trader], usdcIn);
+
+        // 2) Flashloan
+        FreeCollateralLib.mintPpUSDC(mm, usdcIn);
+
+        // 3) Deallocate Excess so there is more free collateral
         SolvencyLib.deallocateExcess(trader, marketId);
         SolvencyLib.deallocateExcess(mm, marketId);
-    }
+
+        // Log state after dealloc
+        console.log("After dealloc: trader freeCollateral = %s, usdcIn = %s", StorageLib.getStorage().realFreeCollateral[trader], usdcIn);
+
+        // 4) Repay Flashloan
+        FreeCollateralLib.burnPpUSDC(trader, usdcIn);
+
+        // Log state after payment
+        console.log("After payment: trader freeCollateral = %s", StorageLib.getStorage().realFreeCollateral[trader]);
+
+        // 4) Check both sides solvent still
+        SolvencyLib.ensureSolvency(trader, marketId);
+        SolvencyLib.ensureSolvency(mm, marketId);
+
+        }
 
     function processSell(
         address trader,
@@ -60,13 +76,21 @@ library TradeExecutionLib {
             tokensIn
         );
 
-        // 2) Net cash settlement: mm pays trader (ppUSDC move only)
+        // 2) Flashloan
+        FreeCollateralLib.mintPpUSDC(mm, usdcIn);
+        
+        // 2) Deallocate Excess so there is more free collateral
+        SolvencyLib.deallocateExcess(trader, marketId);
+        SolvencyLib.deallocateExcess(mm, marketId);
+
+        // 3) Net cash settlement: mm pays trader (ppUSDC move only)
         FreeCollateralLib.transferFreeCollateral(mm, trader, usdcOut);
 
-        // 3) Check both sides solvent still
+        // 4) Check both sides solvent still
         SolvencyLib.ensureSolvency(trader, marketId);
         SolvencyLib.ensureSolvency(mm, marketId);
-        SolvencyLib.deallocateExcess(trader, marketId);
+
+     SolvencyLib.deallocateExcess(trader, marketId);
         SolvencyLib.deallocateExcess(mm, marketId);
     }
 

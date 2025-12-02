@@ -33,7 +33,8 @@ async function setupMultiUserTwoPositionFixture() {
     ISC,
     false,
     ethers.ZeroAddress,
-    "0x"
+    "0x",
+    false
   );
   const markets = await ledger.getMarkets();
   fx.marketId = markets[0];

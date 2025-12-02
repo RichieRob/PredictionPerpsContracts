@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./3_HeapLib.sol";
+import "./3a_TiltRouterLib.sol";
 import "./3_AllocateCapitalLib.sol";
 import "./2_MarketManagementLib.sol";
 
@@ -47,7 +47,7 @@ library SolvencyLib {
         address account,
         uint256 marketId
     ) internal view returns (int256) {
-        (int256 minTilt, ) = HeapLib.getMinTilt(account, marketId);
+        (int256 minTilt, ) = TiltRouterLib.getMinTilt(account, marketId);
         int256 netAlloc    = _netUSDCAllocationSigned(s, account, marketId);
         return netAlloc + s.layOffset[account][marketId] + int256(minTilt);
     }
@@ -91,7 +91,7 @@ library SolvencyLib {
         st.isDMM    = MarketManagementLib.isDMM(account, marketId);
 
         // realMin and netAlloc
-        (int256 minTilt, ) = HeapLib.getMinTilt(account, marketId);
+        (int256 minTilt, ) = TiltRouterLib.getMinTilt(account, marketId);
         st.netAlloc = _netUSDCAllocationSigned(s, account, marketId);
         st.realMin  = st.netAlloc + s.layOffset[account][marketId] + int256(minTilt);
 

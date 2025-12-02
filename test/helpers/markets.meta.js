@@ -24,7 +24,8 @@ async function createMarketWithDetails(fx, {
     iscAmount,
     false,             // doesResolve
     ethers.ZeroAddress,
-    "0x"
+    "0x",
+    false
   );
   await tx.wait();
 

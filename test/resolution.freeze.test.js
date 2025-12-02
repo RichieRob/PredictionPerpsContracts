@@ -37,7 +37,8 @@ describe("MarketMakerLedger – resolution freezes trading & ERC20 views", () =>
       0,                             // no ISC
       true,                          // doesResolve = true
       await oracle.getAddress(),     // oracle
-      "0x"                           // oracle params
+      "0x",
+      false                           // oracle params
     );
 
     marketId = (await fx.ledger.getMarkets())[0];

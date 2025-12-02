@@ -33,7 +33,8 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
       iscAmount,
       false,
       ethers.ZeroAddress,
-      "0x"
+      "0x",
+      false
     );
 
     const markets = await ledger.getMarkets();

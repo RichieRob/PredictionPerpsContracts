@@ -100,43 +100,53 @@ library HeapLib {
                               BLOCK RESCAN
     //////////////////////////////////////////////////////////////*/
 
-    function _rescanBlock(
-        address account,
-        uint256 marketId,
-        uint256 blockId,
-        HeapType heapType
-    ) private {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256 start        = blockId * Types.BLOCK_SIZE;
-        uint256 endExclusive = start + Types.BLOCK_SIZE;
-        uint256[] memory positions = MarketManagementLib.getMarketPositions(marketId);
-        if (endExclusive > positions.length) endExclusive = positions.length;
+function _rescanBlock(
+    address account,
+    uint256 marketId,
+    uint256 blockId,
+    HeapType heapType
+) private {
+    StorageLib.Storage storage s = StorageLib.getStorage();
 
-        int256  extremumVal = (heapType == HeapType.MIN) ? type(int256).max : type(int256).min;
-        uint256 extremumId  = 0;
+    // 🔧 Use storage, not memory → no O(nPositions) copy
+    uint256[] storage positions = s.marketPositions[marketId];
+    uint256 len = positions.length;
 
-        for (uint256 i = start; i < endExclusive; i++) {
-            uint256 k = positions[i];
-            int256 v  = s.tilt[account][marketId][k];
-            if (
-                (heapType == HeapType.MIN && v < extremumVal) ||
-                (heapType == HeapType.MAX && v > extremumVal)
-            ) {
-                extremumVal = v;
-                extremumId  = k;
-            }
-        }
-
-        Types.BlockData storage b =
-            (heapType == HeapType.MIN)
-                ? s.minBlockData[account][marketId][blockId]
-                : s.blockDataMax[account][marketId][blockId];
-
-        b.val = extremumVal;
-        b.id  = extremumId;
-
-        _updateTopHeap(account, marketId, blockId, heapType);
+    uint256 start        = blockId * Types.BLOCK_SIZE;
+    uint256 endExclusive = start + Types.BLOCK_SIZE;
+    if (endExclusive > len) {
+        endExclusive = len;
     }
+
+    int256  extremumVal = (heapType == HeapType.MIN)
+        ? type(int256).max
+        : type(int256).min;
+    uint256 extremumId  = 0;
+
+    for (uint256 i = start; i < endExclusive; i++) {
+        uint256 k = positions[i];
+        int256 v  = s.tilt[account][marketId][k];
+
+        if (
+            (heapType == HeapType.MIN && v < extremumVal) ||
+            (heapType == HeapType.MAX && v > extremumVal)
+        ) {
+            extremumVal = v;
+            extremumId  = k;
+        }
+    }
+
+    Types.BlockData storage b =
+        (heapType == HeapType.MIN)
+            ? s.minBlockData[account][marketId][blockId]
+            : s.blockDataMax[account][marketId][blockId];
+
+    b.val = extremumVal;
+    b.id  = extremumId;
+
+    _updateTopHeap(account, marketId, blockId, heapType);
+}
+
 
     /*//////////////////////////////////////////////////////////////
                                 HEAP CORE

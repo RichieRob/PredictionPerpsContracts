@@ -33,7 +33,8 @@ describe("LMSR + MarketMakerLedger – expansion from reserve", () => {
       iscAmount,
       false,               // doesResolve
       ethers.ZeroAddress,  // oracle
-      "0x"
+      "0x",
+      false
     );
 
     const markets = await ledger.getMarkets();

@@ -23,7 +23,8 @@ describe("MarketMakerLedger – simple resolution + winnings claim", () => {
       0,                    // no ISC
       true,                 // resolves
       fx.owner.address,     // oracle (unused, but stored)
-      "0x"
+      "0x",
+      false
     );
 
     marketId = (await fx.ledger.getMarkets())[0];

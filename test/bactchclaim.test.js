@@ -26,7 +26,8 @@ describe("MarketMakerLedger – batchClaimWinnings", () => {
       0,                    // no ISC
       true,                 // doesResolve = true
       fx.owner.address,     // dummy oracle address
-      "0x"
+      "0x",
+      false
     );
 
     marketId = (await fx.ledger.getMarkets())[0];

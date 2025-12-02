@@ -29,7 +29,8 @@ describe("MarketMakerLedger – BUY_FOR_USDC intents", () => {
       0n,
       false,
       ethers.ZeroAddress,
-      "0x"
+      "0x",
+      false
     );
 
     const markets = await fx.ledger.getMarkets();

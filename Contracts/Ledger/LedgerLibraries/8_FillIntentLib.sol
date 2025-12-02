@@ -7,40 +7,35 @@ import "./2_IntentLib.sol";
 import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
 import "./4_SolvencyLib.sol";
+import "./7a_SettlementLib.sol"; // <— new import
 
 library FillIntentLib {
-    
-
     /// @dev Pure P2P settlement: trader is always the buyer, msg.sender is the seller.
     function _settleIntentP2P(
         Types.Intent calldata intent,
         uint256 fillPrimary,  // tokens
         uint256 fillQuote     // ppUSDC / USDC
     ) internal {
-        // Trader = buyer (by definition of our intents)
-        address buyer  = intent.trader;
+        address buyer  = intent.trader;   // always the buyer
         address seller = msg.sender;
 
         require(seller != address(0), "seller=0");
         require(seller != buyer, "self-fill not allowed"); // optional
 
         // --- Price guard (buy-only semantics) ---
-
         if (intent.kind == Types.TradeKind.BUY_EXACT_TOKENS) {
-            // Require: (fillQuote / fillPrimary) <= (bound / primaryAmount)
+            // (fillQuote / fillPrimary) <= (bound / primaryAmount)
             require(
                 fillQuote * intent.primaryAmount
                     <= intent.bound * fillPrimary,
                 "price > limit"
             );
 
-            // Defensive caps
             require(fillPrimary <= intent.primaryAmount, "fill > tokens");
             require(fillQuote  <= intent.bound,          "fill > bound");
 
         } else if (intent.kind == Types.TradeKind.BUY_FOR_USDC) {
-            // Require "good enough" price:
-            //   (fillPrimary / fillQuote) >= (bound / primaryAmount)
+            // (fillPrimary / fillQuote) >= (bound / primaryAmount)
             require(
                 fillPrimary * intent.primaryAmount
                     >= intent.bound * fillQuote,
@@ -52,44 +47,19 @@ library FillIntentLib {
             revert("BAD_KIND");
         }
 
-
-
-        // 0) Flash Loan to buyer
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        s.realFreeCollateral[buyer] += fillQuote;
-        s.realTotalFreeCollateral += fillQuote;  
-
-        // --- 1) Move exposure (Back/Lay) seller -> buyer ---
-        PositionTransferLib.transferPosition(
-            seller,
+        // Settlement:
+        // - buyer is payer of quote (fillQuote), receives the position
+        // - seller is payee, gives up the position
+        SettlementLib.settleWithFlash(
             buyer,
+            seller,
             intent.marketId,
             intent.positionId,
-            intent.isBack,   // true: Back, false: Lay
-            fillPrimary
+            intent.isBack,
+            fillPrimary,
+            fillQuote,
+            /* payerReceivesPosition = */ true
         );
-
-        // --- 2) Move ppUSDC/freeCollateral buyer -> seller ---
-        // Pure redistribution; no mint/burn, no TVL change.
-        FreeCollateralLib.transferFreeCollateral(buyer, seller, fillQuote);
-
-        //3) Clear up Seller
-        SolvencyLib.ensureSolvency(seller, intent.marketId);
-        SolvencyLib.deallocateExcess(seller, intent.marketId);
-
-        // Clear up Buyer
-        SolvencyLib.ensureSolvency(buyer, intent.marketId);
-        SolvencyLib.deallocateExcess(buyer, intent.marketId);
-
-        //Repay Flash Loan
-        s.realFreeCollateral[buyer] -= fillQuote;  
-        require(s.realFreeCollateral[buyer] >= 0, "Flash loan repayment failed");
-        s.realTotalFreeCollateral -= fillQuote;  
-        require(s.realTotalFreeCollateral >= 0, "Flash loan repayment failed");
-
-
-
-
     }
 
     /// @dev Full intent flow: verify sig, track partial fills, then settle P2P.
@@ -106,14 +76,12 @@ library FillIntentLib {
         require(block.timestamp <= intent.deadline, "intent expired");
         require(fillPrimary > 0, "fillPrimary=0");
         require(fillQuote  > 0, "fillQuote=0");
-            
-            // In order to unify intents we dont allow any sell intents - this is because buy and sell back and lay creates 4 different kinds, but we can represent all sells as buys. 
-            // This wil help the logic when it comes to building things like order books etc. 
 
+        // Only BUY intents supported (SELLs can be represented as BUYs)
         require(
-        intent.kind == Types.TradeKind.BUY_EXACT_TOKENS ||
-        intent.kind == Types.TradeKind.BUY_FOR_USDC,
-        "intent kind not supported"
+            intent.kind == Types.TradeKind.BUY_EXACT_TOKENS ||
+            intent.kind == Types.TradeKind.BUY_FOR_USDC,
+            "intent kind not supported"
         );
 
         // EIP-712 sig check
@@ -125,12 +93,13 @@ library FillIntentLib {
 
         require(!st.cancelled, "intent cancelled");
         require(st.filledPrimary < intent.primaryAmount, "fully filled");
-        require(st.filledPrimary + fillPrimary <= intent.primaryAmount, "overfill");
+        require(
+            st.filledPrimary + fillPrimary <= intent.primaryAmount,
+            "overfill"
+        );
 
         st.filledPrimary += fillPrimary;
 
         _settleIntentP2P(intent, fillPrimary, fillQuote);
-
-
     }
 }

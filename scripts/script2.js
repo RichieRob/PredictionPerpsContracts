@@ -3,6 +3,15 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
+  return out;
+}
+
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("🚀 Running LMSR and market deployment with account:", deployer.address);
@@ -108,24 +117,143 @@ async function main() {
   }
 
   // ------------------------------------------------------------
-  // 6) Create 7 positions on the LEDGER
+  // 6) Create 100 positions on the LEDGER
   // ------------------------------------------------------------
   const positions = [
-    { name: "Position 1", ticker: "POS1" },
-    { name: "Position 2", ticker: "POS2" },
-    { name: "Position 3", ticker: "POS3" },
-    { name: "Position 4", ticker: "POS4" },
-    { name: "Position 5", ticker: "POS5" },
-    { name: "Position 6", ticker: "POS6" },
-    { name: "Position 7", ticker: "POS7" },
+    { name: "Apple", ticker: "APL" },
+    { name: "Banana", ticker: "BAN" },
+    { name: "Cucumber", ticker: "CUC" },
+    { name: "Dragon Fruit", ticker: "DFT" },
+    { name: "Elderberry", ticker: "ELD" },
+    { name: "Fig Supreme", ticker: "FIG" },
+    { name: "Grape Cluster", ticker: "GRP" },
+    { name: "Honeydew", ticker: "HNY" },
+    { name: "Iceberg Lettuce", ticker: "ICE" },
+    { name: "Jackfruit", ticker: "JKF" },
+    { name: "Kiwi Slice", ticker: "KIW" },
+    { name: "Lemon Zest", ticker: "LMN" },
+    { name: "Mango Storm", ticker: "MNG" },
+    { name: "Nectarine", ticker: "NEC" },
+    { name: "Orange Blaze", ticker: "ORG" },
+    { name: "Papaya Burst", ticker: "PAP" },
+    { name: "Quinoa Bowl", ticker: "QNB" },
+    { name: "Raspberry Rush", ticker: "RSP" },
+    { name: "Strawberry Sun", ticker: "STW" },
+    { name: "Tomato Bomb", ticker: "TMT" },
+    { name: "Ube Cream", ticker: "UBE" },
+    { name: "Vanilla Bean", ticker: "VNL" },
+    { name: "Watermelon Wave", ticker: "WML" },
+    { name: "Yuzu Spark", ticker: "YZU" },
+    { name: "Zucchini Torch", ticker: "ZUC" },
+  
+    // Animals
+    { name: "Arctic Fox", ticker: "FOX" },
+    { name: "Blue Whale", ticker: "WHA" },
+    { name: "Cheetah Dash", ticker: "CHT" },
+    { name: "Dolphin Echo", ticker: "DLP" },
+    { name: "Eagle Strike", ticker: "EGL" },
+    { name: "Fennec Scout", ticker: "FEN" },
+    { name: "Gorilla Force", ticker: "GOR" },
+    { name: "Hawk Vision", ticker: "HWK" },
+    { name: "Ibis Drift", ticker: "IBS" },
+    { name: "Jaguar Shadow", ticker: "JGR" },
+    { name: "Koala Chill", ticker: "KOA" },
+    { name: "Lynx Mirage", ticker: "LNX" },
+    { name: "Moose Titan", ticker: "MOS" },
+    { name: "Night Owl", ticker: "OWL" },
+    { name: "Otter Joy", ticker: "OTR" },
+    { name: "Panther Noir", ticker: "PNR" },
+    { name: "Quokka Smile", ticker: "QOK" },
+    { name: "Raven Wing", ticker: "RVN" },
+    { name: "Shark Surge", ticker: "SHK" },
+    { name: "Tiger Blaze", ticker: "TGR" },
+    { name: "Urchin Pink", ticker: "URC" },
+    { name: "Vulture Peak", ticker: "VTR" },
+    { name: "Wolf Spirit", ticker: "WLF" },
+    { name: "Yak Charge", ticker: "YAK" },
+    { name: "Zebra Flash", ticker: "ZEB" },
+  
+    // Elements & vibes
+    { name: "Aurora Beam", ticker: "AUR" },
+    { name: "Blizzard Gale", ticker: "BLZ" },
+    { name: "Cosmic Dust", ticker: "COS" },
+    { name: "Dune Storm", ticker: "DUN" },
+    { name: "Ember Core", ticker: "EMB" },
+    { name: "Frost Bite", ticker: "FRS" },
+    { name: "Glimmer Spark", ticker: "GLM" },
+    { name: "Helix Pulse", ticker: "HLX" },
+    { name: "Ion Burst", ticker: "ION" },
+    { name: "Jade Wave", ticker: "JAD" },
+    { name: "Kinetic Flux", ticker: "KNX" },
+    { name: "Lunar Echo", ticker: "LUN" },
+    { name: "Meteor Drift", ticker: "MET" },
+    { name: "Nebula Bloom", ticker: "NEB" },
+    { name: "Obsidian Edge", ticker: "OBS" },
+    { name: "Photon Ring", ticker: "PHO" },
+    { name: "Quartz Flash", ticker: "QRZ" },
+    { name: "Radiant Surge", ticker: "RAD" },
+    { name: "Solar Tide", ticker: "SOL" },
+    { name: "Tempest Arc", ticker: "TMP" },
+    { name: "Umbra Veil", ticker: "UMB" },
+    { name: "Vortex Spin", ticker: "VTX" },
+    { name: "Wind Cutter", ticker: "WND" },
+    { name: "Xenon Pulse", ticker: "XEN" },
+    { name: "Yield Bloom", ticker: "YLD" },
+    { name: "Zenith Rise", ticker: "ZNT" },
+  
+    // Memes, crypto, weird stuff
+    { name: "Ape Frenzy", ticker: "APE" },
+    { name: "Bagholder Pro", ticker: "BAG" },
+    { name: "Chad Momentum", ticker: "CHD" },
+    { name: "Degen Mode", ticker: "DGN" },
+    { name: "Exit Liquidity", ticker: "XLQ" },
+    { name: "FOMO Blast", ticker: "FOM" },
+    { name: "GM Sunshine", ticker: "GMX" },
+    { name: "Hopium Cloud", ticker: "HOP" },
+    { name: "Idiot Index", ticker: "IDI" },
+    { name: "Just Send It", ticker: "SDI" },
+    { name: "Karma Spiral", ticker: "KRM" },
+    { name: "Liquidity Vortex", ticker: "LQV" },
+    { name: "Moonshot Beta", ticker: "MOON" },
+    { name: "Nuke Button", ticker: "NUK" },
+    { name: "Overleveraged", ticker: "OVR" },
+    { name: "Pump Signal", ticker: "PMP" },
+    { name: "Quick Rug", ticker: "RUG" },
+    { name: "Rekt Cannon", ticker: "REKT" },
+    { name: "Supercycle", ticker: "SUP" },
+    { name: "To The Stars", ticker: "STS" }
   ];
+  
+    // ------------------------------------------------------------
+  // 6) Create positions on the LEDGER in batches
+  // ------------------------------------------------------------
+  const batchSize = 15; // tweak if needed: 10–20 is usually safe
+  const batches = chunkArray(positions, batchSize);
 
   try {
-    const txPos = await ledger.createPositions(marketId, positions);
-    await txPos.wait();
-    console.log("📍 Created 7 positions in market", marketId.toString());
+    let createdCount = 0;
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+
+      const txPos = await ledger.createPositions(
+        marketId,
+        batch,
+        {
+          // optional – but helps if Hardhat still underestimates
+          gasLimit: 12_000_000n,
+        }
+      );
+      const receipt = await txPos.wait();
+
+      createdCount += batch.length;
+      console.log(
+        `📍 Batch ${i + 1}/${batches.length} – created ${batch.length} positions (total: ${createdCount}) – gas used: ${receipt.gasUsed.toString()}`
+      );
+    }
+
+    console.log("✅ All positions created:", createdCount);
   } catch (err) {
-    console.error("❌ createPositions reverted:", err.message);
+    console.error("❌ Batched createPositions reverted:", err.message);
     return;
   }
 

@@ -136,6 +136,32 @@ function initMarket(
         return _ls.getBackPriceWad(marketId, ledgerPositionId);
     }
 
+   /// @notice Returns BACK prices (in 1e18) for all listed positions in the market, plus the reserve price.
+    /// @dev Useful for fetching all prices in a single call for dApp efficiency.
+    /// @return prices Array of {positionId, priceWad} for each listed position.
+    /// @return reservePriceWad The reserve ("Other") price in 1e18.
+    struct PositionPrice {
+        uint256 positionId;
+        uint256 priceWad;
+    }
+    function getAllBackPricesWad(uint256 marketId) 
+        external 
+        view 
+        returns (PositionPrice[] memory prices, uint256 reservePriceWad) 
+    {
+        uint256[] memory slots = _ls.listSlots(marketId);
+        prices = new PositionPrice[](slots.length);
+
+        for (uint256 i = 0; i < slots.length; i++) {
+            uint256 posId = slots[i];
+            prices[i].positionId = posId;
+            prices[i].priceWad = _ls.getBackPriceWad(marketId, posId);
+        }
+
+        reservePriceWad = _ls.getReservePriceWad(marketId);
+    }
+
+    
     /// @notice True LAY(not-i) price 1 − p(i) in 1e18.
     function getLayPriceWad(
         uint256 marketId,

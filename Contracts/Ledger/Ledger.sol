@@ -30,6 +30,18 @@ import "./LedgerLibraries/9_TradeRouterLib.sol";
 
 
 
+struct PositionInfo {
+    uint256 positionId;
+    string name;
+    string ticker;
+}
+
+struct PositionInfoWithBalance {
+    uint256 positionId;
+    string name;
+    string ticker;
+    uint256 balance;
+}
 
 
 
@@ -242,203 +254,203 @@ function buyForppUSDC(
     );
 }
 
-function sellExactTokens(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 t,
-    uint256 minUSDCOut
-) external {
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.SELL_EXACT_TOKENS,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        t,
-        minUSDCOut
-    );
-}
+// function sellExactTokens(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 t,
+//     uint256 minUSDCOut
+// ) external {
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.SELL_EXACT_TOKENS,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         t,
+//         minUSDCOut
+//     );
+// }
 
-function sellForppUSDC(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 usdcOut,
-    uint256 maxTokensIn
-) external {
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.SELL_FOR_USDC,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        usdcOut,
-        maxTokensIn
-    );
-}
+// function sellForppUSDC(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 usdcOut,
+//     uint256 maxTokensIn
+// ) external {
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.SELL_FOR_USDC,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         usdcOut,
+//         maxTokensIn
+//     );
+// }
 
 
   // --- trading entrypoints using and updating USDC directly---
 
-function buyExactTokensWithUSDC(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 t,
-    uint256 maxUSDCFromWallet,
-    uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
-    TypesPermit.EIP2612Permit calldata eipPermit,
-    bytes  calldata permit2Calldata
-) external {
-    require(t > 0, "t=0");
+// function buyExactTokensWithUSDC(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 t,
+//     uint256 maxUSDCFromWallet,
+//     uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
+//     TypesPermit.EIP2612Permit calldata eipPermit,
+//     bytes  calldata permit2Calldata
+// ) external {
+//     require(t > 0, "t=0");
 
-    // 1) Deposit from wallet -> ledger realFreeCollateral for msg.sender
-    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
-        msg.sender,           // ledger account credited
-        msg.sender,           // trader paying USDC
-        maxUSDCFromWallet,    // wallet amount we try to pull
-        0,                    // minUSDCDeposited; could add a param if you want
-        mode,
-        eipPermit,
-        permit2Calldata
-    );
+//     // 1) Deposit from wallet -> ledger realFreeCollateral for msg.sender
+//     uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
+//         msg.sender,           // ledger account credited
+//         msg.sender,           // trader paying USDC
+//         maxUSDCFromWallet,    // wallet amount we try to pull
+//         0,                    // minUSDCDeposited; could add a param if you want
+//         mode,
+//         eipPermit,
+//         permit2Calldata
+//     );
 
-    // 2) Route via router (uses recorded as maxUSDCIn)
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.BUY_EXACT_TOKENS,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        t,          // primaryAmount = tokens
-        recorded    // bound = maxUSDCIn
-    );
-}
+//     // 2) Route via router (uses recorded as maxUSDCIn)
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.BUY_EXACT_TOKENS,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         t,          // primaryAmount = tokens
+//         recorded    // bound = maxUSDCIn
+//     );
+// }
 
-function buyForUSDCWithUSDC(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 usdcFromWallet,
-    uint256 minTokensOut,
-    uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
-    TypesPermit.EIP2612Permit calldata eipPermit,
-    bytes  calldata permit2Calldata
-) external {
-    require(usdcFromWallet > 0, "usdcIn=0");
+// function buyForUSDCWithUSDC(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 usdcFromWallet,
+//     uint256 minTokensOut,
+//     uint8   mode,                         // 0 = allowance, 1 = EIP-2612, 2 = Permit2
+//     TypesPermit.EIP2612Permit calldata eipPermit,
+//     bytes  calldata permit2Calldata
+// ) external {
+//     require(usdcFromWallet > 0, "usdcIn=0");
 
-    // 1) Deposit from wallet -> ledger realFreeCollateral
-    uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
-        msg.sender,          // ledger account credited
-        msg.sender,          // trader paying USDC
-        usdcFromWallet,
-        0,                   // minUSDCDeposited
-        mode,
-        eipPermit,
-        permit2Calldata
-    );
+//     // 1) Deposit from wallet -> ledger realFreeCollateral
+//     uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
+//         msg.sender,          // ledger account credited
+//         msg.sender,          // trader paying USDC
+//         usdcFromWallet,
+//         0,                   // minUSDCDeposited
+//         mode,
+//         eipPermit,
+//         permit2Calldata
+//     );
 
-    // 2) Route via router (recorded is actual usdcIn)
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.BUY_FOR_USDC,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        recorded,      // primaryAmount = usdcIn
-        minTokensOut   // bound = minTokensOut
-    );
-}
+//     // 2) Route via router (recorded is actual usdcIn)
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.BUY_FOR_USDC,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         recorded,      // primaryAmount = usdcIn
+//         minTokensOut   // bound = minTokensOut
+//     );
+// }
 
-/// @notice Sell exact `t` tokens and withdraw the USDC proceeds to `to`.
-function sellExactTokensForUSDCToWallet(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 t,
-    uint256 minUSDCOut,
-    address to
-) external {
-    require(t > 0, "t=0");
-    require(to != address(0), "to=0");
+// /// @notice Sell exact `t` tokens and withdraw the USDC proceeds to `to`.
+// function sellExactTokensForUSDCToWallet(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 t,
+//     uint256 minUSDCOut,
+//     address to
+// ) external {
+//     require(t > 0, "t=0");
+//     require(to != address(0), "to=0");
 
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256 beforeFree = s.realFreeCollateral[msg.sender];
+//     StorageLib.Storage storage s = StorageLib.getStorage();
+//     uint256 beforeFree = s.realFreeCollateral[msg.sender];
 
-    // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.SELL_EXACT_TOKENS,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        t,           // primaryAmount = tokens
-        minUSDCOut   // bound = minUSDCOut
-    );
+//     // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.SELL_EXACT_TOKENS,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         t,           // primaryAmount = tokens
+//         minUSDCOut   // bound = minUSDCOut
+//     );
 
-    // 2) Work out how much this trade just credited
-    uint256 afterFree = s.realFreeCollateral[msg.sender];
-    require(afterFree >= beforeFree, "realFreeCollateral underflow");
-    uint256 delta = afterFree - beforeFree;
-    require(delta > 0, "no proceeds");
+//     // 2) Work out how much this trade just credited
+//     uint256 afterFree = s.realFreeCollateral[msg.sender];
+//     require(afterFree >= beforeFree, "realFreeCollateral underflow");
+//     uint256 delta = afterFree - beforeFree;
+//     require(delta > 0, "no proceeds");
 
-    // 3) Withdraw only that delta as real USDC to `to`
-    DepositWithdrawLib.withdrawWithoutClaims(msg.sender, delta, to);
-    emit Withdrawn(msg.sender, delta);
-}
+//     // 3) Withdraw only that delta as real USDC to `to`
+//     DepositWithdrawLib.withdrawWithoutClaims(msg.sender, delta, to);
+//     emit Withdrawn(msg.sender, delta);
+// }
 
-/// @notice Sell however many tokens are needed to get exactly `usdcOut`
-///         and withdraw that USDC directly to `to`.
-function sellForUSDCToWallet(
-    address mm,
-    uint256 marketId,
-    uint256 positionId,
-    bool    isBack,
-    uint256 usdcOut,
-    uint256 maxTokensIn,
-    address to
-) external {
-    require(usdcOut > 0, "usdcOut=0");
-    require(to != address(0), "to=0");
+// /// @notice Sell however many tokens are needed to get exactly `usdcOut`
+// ///         and withdraw that USDC directly to `to`.
+// function sellForUSDCToWallet(
+//     address mm,
+//     uint256 marketId,
+//     uint256 positionId,
+//     bool    isBack,
+//     uint256 usdcOut,
+//     uint256 maxTokensIn,
+//     address to
+// ) external {
+//     require(usdcOut > 0, "usdcOut=0");
+//     require(to != address(0), "to=0");
 
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256 beforeFree = s.realFreeCollateral[msg.sender];
+//     StorageLib.Storage storage s = StorageLib.getStorage();
+//     uint256 beforeFree = s.realFreeCollateral[msg.sender];
 
-    // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router.
-    TradeRouterLib.tradeWithPPUSDC(
-        Types.TradeKind.SELL_FOR_USDC,
-        msg.sender,
-        mm,
-        marketId,
-        positionId,
-        isBack,
-        usdcOut,      // primaryAmount = target ppUSDC credit
-        maxTokensIn   // bound
-    );
+//     // 1) Internal sell → credits realFreeCollateral (ppUSDC) via router.
+//     TradeRouterLib.tradeWithPPUSDC(
+//         Types.TradeKind.SELL_FOR_USDC,
+//         msg.sender,
+//         mm,
+//         marketId,
+//         positionId,
+//         isBack,
+//         usdcOut,      // primaryAmount = target ppUSDC credit
+//         maxTokensIn   // bound
+//     );
 
-    // 2) Compute net realFreeCollateral gained
-    uint256 afterFree = s.realFreeCollateral[msg.sender];
-    require(afterFree >= beforeFree, "realFreeCollateral underflow");
-    uint256 delta = afterFree - beforeFree;
+//     // 2) Compute net realFreeCollateral gained
+//     uint256 afterFree = s.realFreeCollateral[msg.sender];
+//     require(afterFree >= beforeFree, "realFreeCollateral underflow");
+//     uint256 delta = afterFree - beforeFree;
 
-    // 3) Enforce "all of usdcOut must be withdrawable"
-    require(delta >= usdcOut, "sellForUSDC: insufficient net proceeds");
+//     // 3) Enforce "all of usdcOut must be withdrawable"
+//     require(delta >= usdcOut, "sellForUSDC: insufficient net proceeds");
 
-    // 4) Withdraw exactly usdcOut to wallet
-    DepositWithdrawLib.withdrawWithoutClaims(msg.sender, usdcOut, to);
-    emit Withdrawn(msg.sender, usdcOut);
-}
+//     // 4) Withdraw exactly usdcOut to wallet
+//     DepositWithdrawLib.withdrawWithoutClaims(msg.sender, usdcOut, to);
+//     emit Withdrawn(msg.sender, usdcOut);
+// }
 
 
 
@@ -645,8 +657,8 @@ function erc20Name(uint256 marketId, uint256 positionId)
     return string.concat(positionName, " in ", marketName);
 }
 
-function erc20Symbol(uint256 marketId, uint256 positionId)
-    external
+function _erc20Symbol(uint256 marketId, uint256 positionId)
+    internal
     view
     returns (string memory)
 {
@@ -657,6 +669,14 @@ function erc20Symbol(uint256 marketId, uint256 positionId)
     return string.concat(positionTicker, "-", marketTicker);
 }
 
+function erc20Symbol(uint256 marketId, uint256 positionId)
+    external
+    view
+    returns (string memory)
+{
+ 
+    return _erc20Symbol(marketId, positionId);
+}
 
 
 function cancelIntent(Types.Intent calldata intent) external {
@@ -698,7 +718,65 @@ function resolveMarket(uint256 marketId, uint256 winningPositionId)
     ResolutionLib._resolveMarketCore(marketId, winningPositionId);
 }
 
+// NEW: Extended structs with token address and symbol
+struct PositionInfoExtended {
+    uint256 positionId;
+    string name;
+    string ticker;
+    address tokenAddress;  // ERC20 token address for this position
+    string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
+}
 
+struct PositionInfoWithBalanceExtended {
+    uint256 positionId;
+    string name;
+    string ticker;
+    address tokenAddress;  // ERC20 token address for this position
+    string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
+    uint256 balance;
+}
+
+// NEW: Extended version without balances (for no wallet connected)
+function getMarketPositionsInfoExtended(uint256 marketId) 
+    external 
+    view 
+    returns (PositionInfoExtended[] memory infos) 
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    uint256 count = s.nextPositionId[marketId];
+    infos = new PositionInfoExtended[](count);
+
+    for (uint256 i = 0; i < count; i++) {
+        infos[i].positionId = i;
+        infos[i].name = s.positionNames[marketId][i];
+        infos[i].ticker = s.positionTickers[marketId][i];
+        infos[i].tokenAddress = s.positionERC20[marketId][i];
+        infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
+    }
+}
+
+// NEW: Extended version with balances (for wallet connected)
+function getMarketPositionsInfoForAccountExtended(uint256 marketId, address account) 
+    external 
+    view 
+    returns (PositionInfoWithBalanceExtended[] memory infos) 
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    uint256 count = s.nextPositionId[marketId];
+    infos = new PositionInfoWithBalanceExtended[](count);
+
+    for (uint256 i = 0; i < count; i++) {
+        infos[i].positionId = i;
+        infos[i].name = s.positionNames[marketId][i];
+        infos[i].ticker = s.positionTickers[marketId][i];
+        infos[i].tokenAddress = s.positionERC20[marketId][i];
+        infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
+
+        // Compute balance internally (mirrors balanceOf logic)
+        int256 avail = LedgerLib.getCreatedShares(account, marketId, i);
+        infos[i].balance = (avail > 0) ? uint256(avail) : 0;
+    }
+}
 
 // EXPOSE LIBRARY FOR TESTS
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./7_PositionTransferLib.sol";
+import "./7a_SettlementLib.sol";
 import "./2_MarketManagementLib.sol";
 import "./5_LedgerLib.sol";  
 
@@ -36,15 +36,18 @@ library ERC20BridgeLib {
         emit PositionERC20Registered(token, marketId, positionId);
     }
 
-    function erc20PositionTransfer(
+        function erc20PositionTransfer(
         address token,
         address from,
         address to,
         uint256 amount
     ) internal {
         require(amount > 0, "ERC20BridgeLib: zero amount");
+        require(to != address(0), "ERC20BridgeLib: to=0");
+        if (from == to) return; // no-op, matches ERC20 semantics
 
         StorageLib.Storage storage s = StorageLib.getStorage();
+
         require(msg.sender == token, "ERC20BridgeLib: only token");
         require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
@@ -56,18 +59,20 @@ library ERC20BridgeLib {
             "ERC20BridgeLib: position gone"
         );
 
-        PositionTransferLib.transferPosition(
-            from,
-            to,
+        // Use unified settlement path:
+        // - BACK position by design for ERC20 mirror
+        // - quoteAmount = 0 for a pure position transfer
+        SettlementLib.settleWithFlash(
+            to,          // payer (recipient of the position)
+            from,        // payee (sender of the position)
             marketId,
             positionId,
-            true,   // BACK by design
-            amount
+            true,        // isBack = true for Back mirror ERC20
+            amount,
+            0            // quoteAmount: no ppUSDC leg
         );
-        //ensure sender still solvent
-         SolvencyLib.ensureSolvency(from, marketId);
-         SolvencyLib.deallocateExcess(to, marketId);
     }
+
 
     function getERC20PositionMeta(address token)
         internal

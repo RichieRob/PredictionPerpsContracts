@@ -98,15 +98,6 @@ function setLedger(address newLedger) external onlyOwner {
         function _notifyTransfer(address from, address to, uint256 amount) internal {
         emit Transfer(from, to, amount);
     }
-    
-    function externalMint(address to, uint256 amount) external onlyLedger {
-        _notifyTransfer(address(0), to, amount);
-    }
-
-    function externalBurn(address from, uint256 amount) external onlyLedger {
-        _notifyTransfer(from, address(0), amount);
-    }
-
 
         function notifyTransfer(address from, address to, uint256 amount) external onlyLedger {
         _notifyTransfer(from,to,amount);

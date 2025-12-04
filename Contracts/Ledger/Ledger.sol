@@ -562,8 +562,14 @@ function realTotalFreeCollateral() external view returns (uint256) {
 }
 
 function claimAllPendingWinnings() external {
-    ResolutionLib._applyPendingWinnings(msg.sender);
+    uint256 winnings = ResolutionLib._applyPendingWinnings(msg.sender);
+    if (winnings == 0) return;
+
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    s.realFreeCollateral[msg.sender] += winnings;
+    s.realTotalFreeCollateral        += winnings;
 }
+
 
 function batchClaimWinnings(address account, uint256[] calldata marketIds) external {
     ResolutionLib._batchClaimWinnings(account, marketIds);
@@ -574,15 +580,21 @@ function batchClaimWinnings(address account, uint256[] calldata marketIds) exter
 function ppUSDCTransfer(address from, address to, uint256 amount) external {
     StorageLib.Storage storage s = StorageLib.getStorage();
     require(msg.sender == address(s.ppUSDC), "Only ppUSDC");
+    require(to != address(0), "to=0");
 
-    //Pull all winnings to the user before transfering it
-    ResolutionLib._applyPendingWinnings(from);
-    // ↓ bookkeeping: move freeCollateral between accounts
+    // 1) Realise any pending winnings for `from`
+    uint256 winnings = ResolutionLib._applyPendingWinnings(from);
+    if (winnings > 0) {
+        s.realFreeCollateral[from] += winnings;
+        s.realTotalFreeCollateral  += winnings;
+    }
+
+    // 2) Move ppUSDC / freeCollateral from -> to
     require(s.realFreeCollateral[from] >= amount, "Insufficient ppUSDC");
     s.realFreeCollateral[from] -= amount;
     s.realFreeCollateral[to]   += amount;
-
 }
+
 
 
 // Deposit and Withdraw USDC
@@ -628,10 +640,15 @@ function withdraw(uint256 amount, address to) external {
         bool isBack,
         uint256 amount
     ) external {
-        PositionTransferLib.transferPosition(msg.sender,to,marketId,positionId,isBack,amount);
-        //Update solvency
-        SolvencyLib.ensureSolvency(msg.sender, marketId);
-        SolvencyLib.deallocateExcess(to, marketId);
+      SettlementLib.settleWithFlash(
+            to,          // payer (recipient of the position)
+            msg.sender,        // payee (sender of the position)
+            marketId,
+            positionId,
+            isBack,        // isBack = true for Back mirror ERC20
+            amount,
+            0            // quoteAmount: no ppUSDC leg
+        );
     }
 
 function positionERC20Transfer(
@@ -781,70 +798,70 @@ function getMarketPositionsInfoForAccountExtended(uint256 marketId, address acco
 // EXPOSE LIBRARY FOR TESTS
 
 
-// function invariant_marketAccounting(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 lhs, uint256 rhs)
-// {
-//     return LedgerInvariantViews.marketAccounting(marketId);
-// }
+function invariant_marketAccounting(uint256 marketId)
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.marketAccounting(marketId);
+}
 
-// function invariant_iscWithinLine(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 used, uint256 line)
-// {
-//     StorageLib.Storage storage s = StorageLib.getStorage();
-//     used = LedgerInvariantViews.iscSpent(marketId);
-//     line = s.syntheticCollateral[marketId];
-// }
+function invariant_iscWithinLine(uint256 marketId)
+    external
+    view
+    returns (uint256 used, uint256 line)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    used = LedgerInvariantViews.iscSpent(marketId);
+    line = s.syntheticCollateral[marketId];
+}
 
-// function invariant_effectiveMin(address account, uint256 marketId)
-//     external
-//     view
-//     returns (int256 effMin)
-// {
-//     return LedgerInvariantViews.effectiveMinShares(account, marketId);
-// }
+function invariant_effectiveMin(address account, uint256 marketId)
+    external
+    view
+    returns (int256 effMin)
+{
+    return LedgerInvariantViews.effectiveMinShares(account, marketId);
+}
 
-// function invariant_systemFunding(uint256 marketId)
-//     external
-//     view
-//     returns (uint256 fullSetsSystem)
-// {
-//     return LedgerInvariantViews.totalFullSets(marketId);
-// }
+function invariant_systemFunding(uint256 marketId)
+    external
+    view
+    returns (uint256 fullSetsSystem)
+{
+    return LedgerInvariantViews.totalFullSets(marketId);
+}
 
-// function invariant_tvl()
-//     external
-//     view
-//     returns (uint256 tvl, uint256 aUSDCBalance)
-// {
-//     return LedgerInvariantViews.tvlAccounting();
-// }
+function invariant_tvl()
+    external
+    view
+    returns (uint256 tvl, uint256 aUSDCBalance)
+{
+    return LedgerInvariantViews.tvlAccounting();
+}
 
-// function invariant_systemBalance()
-//     external
-//     view
-//     returns (uint256 lhs, uint256 rhs)
-// {
-//     return LedgerInvariantViews.systemBalance();
-// }
+function invariant_systemBalance()
+    external
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    return LedgerInvariantViews.systemBalance();
+}
 
-// function invariant_checkSolvencyAllMarkets(address account)
-//     external
-//     view
-//     returns (bool ok)
-// {
-//     return LedgerInvariantViews.checkSolvencyAllMarkets(account);
-// }
+function invariant_checkSolvencyAllMarkets(address account)
+    external
+    view
+    returns (bool ok)
+{
+    return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+}
 
-// function invariant_redeemabilityState(address account, uint256 marketId)
-//     external
-//     view
-//     returns (int256 netAlloc, int256 redeemable, int256 margin)
-// {
-//     return LedgerInvariantViews.redeemabilityState( account, marketId);
-// }
+function invariant_redeemabilityState(address account, uint256 marketId)
+    external
+    view
+    returns (int256 netAlloc, int256 redeemable, int256 margin)
+{
+    return LedgerInvariantViews.redeemabilityState( account, marketId);
+}
 
 }

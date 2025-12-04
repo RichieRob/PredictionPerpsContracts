@@ -159,8 +159,8 @@ event PositionTransfer(
         // we need to update from because from might not actually have touched this market yet. This is because collateral essentially auto splits on transfer (if necessary)
         _trackResolvingMarkets(from, marketId);
         _trackResolvingMarkets(to, marketId); 
-        ResolutionLib._applyPendingWinnings(from);
-        ResolutionLib._applyPendingWinnings(to);
+
+        
 
     }
 }

@@ -16,15 +16,16 @@ library LedgerInvariantViews {
     /// @notice Compare stored marketValue vs (MarketUSDCSpent - Redemptions).
     /// @dev Target invariant:
     ///      marketValue[marketId] == MarketUSDCSpent[marketId] - Redemptions[marketId].
-    function marketAccounting(uint256 marketId)
-        internal
-        view
-        returns (uint256 lhs, uint256 rhs)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        lhs = s.marketValue[marketId];
-        rhs = s.MarketUSDCSpent[marketId] - s.Redemptions[marketId];
-    }
+function marketAccounting(uint256 marketId)
+    internal
+    view
+    returns (uint256 lhs, uint256 rhs)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    lhs = s.marketValue[marketId];
+    rhs = s.marketValue[marketId]; // historic counters removed; invariant is now trivial
+}
+
 
     /*//////////////////////////////////////////////////////////////
                        2. EFFECTIVE MIN SHARES

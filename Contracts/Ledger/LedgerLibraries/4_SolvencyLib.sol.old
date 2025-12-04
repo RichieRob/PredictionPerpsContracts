@@ -17,6 +17,7 @@ import "./2_MarketManagementLib.sol";
 ///       - the DMM account
 ///       - on NON-resolving markets.
 library SolvencyLib {
+
     struct State {
         int256 realMin;     // realMinShares
         int256 effMin;      // effectiveMinShares (with ISC for DMM)
@@ -82,7 +83,7 @@ library SolvencyLib {
     }
 
     // -----------------------------------------------------------------------
-    // State loading
+    // State loading + shared rebalance
     // -----------------------------------------------------------------------
 
     /// @dev Load all solvency state in one go so we don't re-hit heaps / mappings.
@@ -114,30 +115,26 @@ library SolvencyLib {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Core rebalance math (pure, shared by view + write paths)
-    // -----------------------------------------------------------------------
-
-    /// @dev Core rebalance logic over an in-memory State.
-    /// @param allowAllocate   whether we're allowed to push capital into the market
-    /// @param allowDeallocate whether we're allowed to pull capital back out
-    /// @return alloc  amount that should be allocated into the market
-    /// @return dealloc amount that should be deallocated from the market
-    function _rebalanceCore(
-        State memory st,
+    /// @dev Internal shared rebalance. Depending on flags, it:
+    ///  - can allocate into the market (fix effMin < 0 and/or netAlloc < redeemable)
+    ///  - can deallocate excess capital (if effMin > 0, within redeemability & DMM constraints).
+    function _rebalance(
+        address account,
+        uint256 marketId,
         bool allowAllocate,
         bool allowDeallocate
-    ) private pure returns (uint256 alloc, uint256 dealloc) {
-        alloc = 0;
-        dealloc = 0;
+    ) private {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        State memory st = _loadState(s, account, marketId);
 
         // ---------------------------------------------------------
         // 1) SOLVENCY: effMin >= 0
         // ---------------------------------------------------------
         if (allowAllocate && st.effMin < 0) {
             uint256 shortfall = uint256(-st.effMin);
+            AllocateCapitalLib.allocate(account, marketId, shortfall);
 
-            alloc       += shortfall;
+            // keep State in sync without re-reading:
             st.realMin  += int256(shortfall);
             st.effMin   += int256(shortfall);
             st.netAlloc += int256(shortfall);
@@ -148,11 +145,11 @@ library SolvencyLib {
         //    (only relevant if st.redeemable > 0, i.e. DMM + non-res)
         // ---------------------------------------------------------
         if (allowAllocate && st.redeemable > 0) {
-            int256 netAllocAfter = st.netAlloc; // after any allocation above
-            if (netAllocAfter < st.redeemable) {
-                uint256 diff = uint256(st.redeemable - netAllocAfter);
+            int256 netAlloc = st.netAlloc; // after any allocation above
+            if (netAlloc < st.redeemable) {
+                uint256 diff = uint256(st.redeemable - netAlloc);
+                AllocateCapitalLib.allocate(account, marketId, diff);
 
-                alloc       += diff;
                 st.realMin  += int256(diff);
                 st.effMin   += int256(diff);
                 st.netAlloc += int256(diff);
@@ -163,11 +160,12 @@ library SolvencyLib {
         // 3) DEALLOCATE EXCESS (if allowed)
         // ---------------------------------------------------------
         if (!allowDeallocate) {
-            return (alloc, dealloc);
+            return;
         }
 
+        // Recompute effMin/netAlloc/redeemable from state (already updated).
         if (st.effMin <= 0) {
-            return (alloc, dealloc);
+            return;
         }
 
         uint256 amount = uint256(st.effMin);
@@ -194,15 +192,12 @@ library SolvencyLib {
         }
 
         if (amount > 0) {
-            dealloc     += amount;
-            st.realMin  -= int256(amount);
-            st.effMin   -= int256(amount);
-            st.netAlloc -= int256(amount);
+            AllocateCapitalLib.deallocate(account, marketId, amount);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Public-facing entrypoints
+    // Public-facing entrypoints (same API as before)
     // -----------------------------------------------------------------------
 
     /// @notice Main guard: ensure an account is solvent (and redeemable if applicable).
@@ -213,13 +208,7 @@ library SolvencyLib {
     ///      and, for DMM on non-resolving markets:
     ///      netAlloc >= redeemable
     function ensureSolvency(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (uint256 alloc, ) = _rebalanceCore(st, true, false);
-        if (alloc > 0) {
-            AllocateCapitalLib.allocate(account, marketId, alloc);
-        }
+        _rebalance(account, marketId, true, false);
     }
 
     /// @notice Try to pull real capital back out of this market into freeCollateral.
@@ -228,46 +217,12 @@ library SolvencyLib {
     ///         netAlloc >= redeemable   (when redeemable > 0, i.e. DMM + non-res)
     ///      and, for the DMM, we don't end up purely on ISC.
     function deallocateExcess(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (, uint256 dealloc) = _rebalanceCore(st, false, true);
-        if (dealloc > 0) {
-            AllocateCapitalLib.deallocate(account, marketId, dealloc);
-        }
+        _rebalance(account, marketId, false, true);
     }
 
     /// @notice Full rebalance: first allocate if needed, then deallocate any safe excess.
-    /// @dev Behaviour for existing callers is preserved: this STILL MUTATES STATE.
     function rebalanceFull(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (uint256 alloc, uint256 dealloc) = _rebalanceCore(st, true, true);
-
-        if (alloc > 0) {
-            AllocateCapitalLib.allocate(account, marketId, alloc);
-        }
-        if (dealloc > 0) {
-            AllocateCapitalLib.deallocate(account, marketId, dealloc);
-        }
-    }
-
-    /// @notice Full rebalance as a dry-run: first allocate if needed, then deallocate any safe excess.
-    /// @dev VIEW-ONLY: does not modify storage.
-    /// @return allocDelta   >= 0 amount that would be allocated
-    /// @return deallocDelta <= 0 negative amount representing what would be deallocated
-    function rebalanceFullView(
-        address account,
-        uint256 marketId
-    ) internal view returns (int256 allocDelta, int256 deallocDelta) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (uint256 alloc, uint256 dealloc) = _rebalanceCore(st, true, true);
-
-        allocDelta   = int256(alloc);          // >= 0
-        deallocDelta = -int256(dealloc);       // <= 0
+        _rebalance(account, marketId, true, true);
     }
 
     // -----------------------------------------------------------------------

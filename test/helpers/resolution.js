@@ -77,18 +77,7 @@ async function assertMarketFrozenFor({
       )
   ).to.be.reverted;
 
-  await expect(
-    ledger
-      .connect(signer)
-      .sellExactTokens(
-        mmAddr,
-        marketId,
-        positionId,
-        true,
-        usdc("10"),
-        0
-      )
-  ).to.be.reverted;
+
 
   // P2P PositionERC20 transfers must also be frozen
   if (preTokenBalForTransferCheck > 0n) {

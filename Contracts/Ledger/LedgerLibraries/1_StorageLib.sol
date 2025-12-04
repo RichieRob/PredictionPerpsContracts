@@ -89,14 +89,14 @@ library StorageLib {
         
         // Total real USDC ever allocated into each market (sum of all MMs).
         // Monotone increasing.
-        mapping(uint256 => uint256) MarketUSDCSpent; // marketId => cumulative allocated
+        //mapping(uint256 => uint256) MarketUSDCSpent; // marketId => cumulative allocated
 
         // Total USDC ever removed from this market’s “active pot”.
         // Includes:
         //   - MM deallocations (moving capital back to freeCollateral), and
         //   - user full-set redemptions (burning complete baskets for USDC).
         // Monotone increasing.
-        mapping(uint256 => uint256) Redemptions; // marketId => total “taken out of the market”
+        //mapping(uint256 => uint256) Redemptions; // marketId => total “taken out of the market”
 
         // Current active real capital in the market:
         // marketValue[marketId] = MarketUSDCSpent[marketId] - Redemptions[marketId] (INTENTION)

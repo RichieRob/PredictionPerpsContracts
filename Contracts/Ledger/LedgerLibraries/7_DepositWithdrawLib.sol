@@ -9,6 +9,10 @@ import "./2_FreeCollateralLib.sol";
 import "./2_ProtocolFeeLib.sol";
 import "./6_ResolutionLib.sol";
 
+interface INotify {
+    function notifyTransfer(address from, address to, uint256 amount) external;
+}
+
 /// @title DepositWithdrawLib
 /// @notice Handles trader deposits and withdrawals to/from Aave,
 ///         integrating optional protocol fee skimming via aUSDC.
@@ -28,6 +32,7 @@ library DepositWithdrawLib {
     // -----------------------------------------------------------------------
     /// @dev Pulls USDC from `from` (if non-zero), supplies to Aave, skims fees,
     ///      credits freeCollateral for `to`, updates TVL and returns recordedAmount.
+    ///      ppUSDC events here ONLY reflect the explicit deposit amount, not winnings.
     function _internalDeposit(
         address from,
         address to,
@@ -52,18 +57,26 @@ library DepositWithdrawLib {
         recordedAmount = ProtocolFeeLib.skimOnAaveSupply(aReceived);
         require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
 
-        // 4. Credit net collateral to `to` (and emit ppUSDC Mint event)
+        // 4. Credit net collateral to `to`
         FreeCollateralLib.mintPpUSDC(to, recordedAmount);
+
+        //    Mirror deposit as ppUSDC mint *based on user USDC in*
+        if (recordedAmount > 0) {
+            INotify(address(s.ppUSDC)).notifyTransfer(address(0), to, recordedAmount);
+        }
 
         // 5. Track TVL principal
         s.totalValueLocked += recordedAmount;
 
-     // apply winnings; process `to` always, and `from` only if distinct & non-zero
-    ResolutionLib._applyPendingWinnings(to);
-    if (from != address(0) && from != to) {
-    ResolutionLib._applyPendingWinnings(from);
-}
-
+        // 6. Apply any pending winnings for `from` *silently* (no ppUSDC events here)
+        if (from != address(0)) {
+            uint256 winnings = ResolutionLib._applyPendingWinnings(from);
+            if (winnings > 0) {
+                s.realFreeCollateral[from] += winnings;
+                s.realTotalFreeCollateral  += winnings;
+                // No notifyTransfer: winnings are auto-credited without visible ppUSDC ERC20 I/O.
+            }
+        }
     }
 
     /// @notice Simple direct deposit from msg.sender → msg.sender with no min.
@@ -157,7 +170,6 @@ library DepositWithdrawLib {
         bytes calldata permit2Calldata
     ) internal returns (uint256 recordedAmount) {
         if (mode == MODE_ALLOWANCE) {
-            // simple allowance + transferFrom path
             recordedAmount = depositFromTraderWithAllowance(
                 account,
                 trader,
@@ -195,6 +207,12 @@ library DepositWithdrawLib {
 
         // This will revert internally if freeCollateral[account] < amount
         FreeCollateralLib.burnPpUSDC(account, amount);
+
+        // Mirror user USDC-out as ppUSDC burn event
+        if (amount > 0) {
+            INotify(address(s.ppUSDC)).notifyTransfer(account, address(0), amount);
+        }
+
         s.totalValueLocked -= amount;
 
         // Withdraw from Aave directly to recipient
@@ -202,14 +220,22 @@ library DepositWithdrawLib {
     }
 
     /// @notice User withdraws and we first realise any pending winnings.
+    ///         Winnings are credited silently (no ppUSDC event), the visible
+    ///         ppUSDC burn event only reflects the explicit withdrawal amount.
     function withdrawWithClaims(address account, uint256 amount, address to) internal {
-        // 1. Realise pending winnings (may mint more freeCollateral).
-        ResolutionLib._applyPendingWinnings(account);
+        StorageLib.Storage storage s = StorageLib.getStorage();
+
+        // 1. Realise pending winnings and credit them silently
+        uint256 winnings = ResolutionLib._applyPendingWinnings(account);
+        if (winnings > 0) {
+            s.realFreeCollateral[account] += winnings;
+            s.realTotalFreeCollateral    += winnings;
+            // No notifyTransfer here: winnings are not part of “user I/O” events.
+        }
 
         // 2. Do the actual accounting + Aave withdraw in ONE place.
         withdrawWithoutClaims(account, amount, to);
     }
-
 
     // -----------------------------------------------------------------------
     // Owner interest skim (no double-transfer risk)

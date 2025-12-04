@@ -3,21 +3,37 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 import "./0_Types.sol";
-import "./2_MarketManagementLib.sol";
 
-/// @notice Min-heap and max-heap over blocks (4-ary heap). Each heap node holds a blockId,
-/// and its key is s.minBlockData[account][marketId][blockId].val or s.blockDataMax[...].val.
-/// We maintain the heaps when a block's extremum value changes.
+/// @notice Min-heap and (optionally) max-heap over blocks (4-ary heap).
+/// Each heap node holds a blockId, and its key is
+///   - s.minBlockData[account][marketId][blockId].val for MIN
+///   - s.blockDataMax[account][marketId][blockId].val for MAX
+///
+/// We now **only** maintain the MAX side for the DMM in NON-resolving markets.
+/// Everyone else (traders, resolving markets) only pays for MIN updates.
 library HeapLib {
-
     struct HeapContext {
         address account;
         uint256 marketId;
         HeapType heapType;
     }
 
-    
     enum HeapType { MIN, MAX }
+
+    /*//////////////////////////////////////////////////////////////
+                         INTERNAL HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Only track max-heap for the DMM in non-resolving markets.
+    function _shouldTrackMax(
+        StorageLib.Storage storage s,
+        address account,
+        uint256 marketId
+    ) private view returns (bool) {
+        if (s.doesResolve[marketId]) return false;
+        // Only the single DMM for this market needs redeemability (maxTilt)
+        return (s.marketToDMM[marketId] == account);
+    }
 
     /*//////////////////////////////////////////////////////////////
                                UPDATE TILT
@@ -35,11 +51,29 @@ library HeapLib {
         int256 newTilt = s.tilt[account][marketId][positionId] + delta;
         s.tilt[account][marketId][positionId] = newTilt;
 
-        // Update min block and heap
-        _updateBlockAndHeap(account, marketId, blockId, newTilt, positionId, HeapType.MIN);
+        // ── Always maintain MIN structures (solvency constraint) ──
+        _updateBlockAndHeap(
+            account,
+            marketId,
+            blockId,
+            newTilt,
+            positionId,
+            HeapType.MIN
+        );
 
-        // Update max block and heap
-        _updateBlockAndHeap(account, marketId, blockId, newTilt, positionId, HeapType.MAX);
+        // ── Only maintain MAX tilts for the DMM in non-resolving markets ──
+        if (_shouldTrackMax(s, account, marketId)) {
+            _updateBlockAndHeap(
+                account,
+                marketId,
+                blockId,
+                newTilt,
+                positionId,
+                HeapType.MAX
+            );
+        }
+        // For all other accounts/markets, MAX side is never updated and
+        // getMaxTilt() will simply see an empty heap (length == 0).
     }
 
     function _updateBlockAndHeap(
@@ -100,53 +134,52 @@ library HeapLib {
                               BLOCK RESCAN
     //////////////////////////////////////////////////////////////*/
 
-function _rescanBlock(
-    address account,
-    uint256 marketId,
-    uint256 blockId,
-    HeapType heapType
-) private {
-    StorageLib.Storage storage s = StorageLib.getStorage();
+    function _rescanBlock(
+        address account,
+        uint256 marketId,
+        uint256 blockId,
+        HeapType heapType
+    ) private {
+        StorageLib.Storage storage s = StorageLib.getStorage();
 
-    // 🔧 Use storage, not memory → no O(nPositions) copy
-    uint256[] storage positions = s.marketPositions[marketId];
-    uint256 len = positions.length;
+        // Use storage, not memory → no O(nPositions) copy
+        uint256[] storage positions = s.marketPositions[marketId];
+        uint256 len = positions.length;
 
-    uint256 start        = blockId * Types.BLOCK_SIZE;
-    uint256 endExclusive = start + Types.BLOCK_SIZE;
-    if (endExclusive > len) {
-        endExclusive = len;
-    }
-
-    int256  extremumVal = (heapType == HeapType.MIN)
-        ? type(int256).max
-        : type(int256).min;
-    uint256 extremumId  = 0;
-
-    for (uint256 i = start; i < endExclusive; i++) {
-        uint256 k = positions[i];
-        int256 v  = s.tilt[account][marketId][k];
-
-        if (
-            (heapType == HeapType.MIN && v < extremumVal) ||
-            (heapType == HeapType.MAX && v > extremumVal)
-        ) {
-            extremumVal = v;
-            extremumId  = k;
+        uint256 start        = blockId * Types.BLOCK_SIZE;
+        uint256 endExclusive = start + Types.BLOCK_SIZE;
+        if (endExclusive > len) {
+            endExclusive = len;
         }
+
+        int256  extremumVal = (heapType == HeapType.MIN)
+            ? type(int256).max
+            : type(int256).min;
+        uint256 extremumId  = 0;
+
+        for (uint256 i = start; i < endExclusive; i++) {
+            uint256 k = positions[i];
+            int256 v  = s.tilt[account][marketId][k];
+
+            if (
+                (heapType == HeapType.MIN && v < extremumVal) ||
+                (heapType == HeapType.MAX && v > extremumVal)
+            ) {
+                extremumVal = v;
+                extremumId  = k;
+            }
+        }
+
+        Types.BlockData storage b =
+            (heapType == HeapType.MIN)
+                ? s.minBlockData[account][marketId][blockId]
+                : s.blockDataMax[account][marketId][blockId];
+
+        b.val = extremumVal;
+        b.id  = extremumId;
+
+        _updateTopHeap(account, marketId, blockId, heapType);
     }
-
-    Types.BlockData storage b =
-        (heapType == HeapType.MIN)
-            ? s.minBlockData[account][marketId][blockId]
-            : s.blockDataMax[account][marketId][blockId];
-
-    b.val = extremumVal;
-    b.id  = extremumId;
-
-    _updateTopHeap(account, marketId, blockId, heapType);
-}
-
 
     /*//////////////////////////////////////////////////////////////
                                 HEAP CORE
@@ -182,9 +215,7 @@ function _rescanBlock(
         indexMap[account][marketId][blockId] = idx + 1;
     }
 
-    
-
-function _place(
+    function _place(
         StorageLib.Storage storage s,
         uint256[] storage heap,
         address account,
@@ -197,11 +228,11 @@ function _place(
         _setIndex(s, account, marketId, blockId, idx, heapType);
     }
 
-   /// @dev Bubble the node upward
-function _bubbleUp(
+    /// @dev Bubble the node upward
+    function _bubbleUp(
         StorageLib.Storage storage s,
         uint256[] storage heap,
-        HeapContext memory ctx,     // only cheap data
+        HeapContext memory ctx,
         uint256 index,
         uint256 blockId,
         int256 val
@@ -209,7 +240,13 @@ function _bubbleUp(
         while (index > 0) {
             uint256 parent = (index - 1) / 4;
             uint256 parentBlockId = heap[parent];
-            int256 parentVal = _getBlockVal(s, ctx.account, ctx.marketId, parentBlockId, ctx.heapType);
+            int256 parentVal = _getBlockVal(
+                s,
+                ctx.account,
+                ctx.marketId,
+                parentBlockId,
+                ctx.heapType
+            );
 
             bool shouldSwap = ctx.heapType == HeapType.MIN
                 ? parentVal > val
@@ -224,7 +261,7 @@ function _bubbleUp(
         return index;
     }
 
-  function _bubbleDown(
+    function _bubbleDown(
         StorageLib.Storage storage s,
         uint256[] storage heap,
         HeapContext memory ctx,
@@ -240,10 +277,18 @@ function _bubbleUp(
                 uint256 child = index * 4 + i;
                 if (child >= heap.length) break;
 
-                int256 childVal = _getBlockVal(s, ctx.account, ctx.marketId, heap[child], ctx.heapType);
+                int256 childVal = _getBlockVal(
+                    s,
+                    ctx.account,
+                    ctx.marketId,
+                    heap[child],
+                    ctx.heapType
+                );
 
-                if ((ctx.heapType == HeapType.MIN && childVal < bestVal) ||
-                    (ctx.heapType == HeapType.MAX && childVal > bestVal)) {
+                if (
+                    (ctx.heapType == HeapType.MIN && childVal < bestVal) ||
+                    (ctx.heapType == HeapType.MAX && childVal > bestVal)
+                ) {
                     best = child;
                     bestVal = childVal;
                 }
@@ -339,6 +384,8 @@ function _bubbleUp(
         StorageLib.Storage storage s = StorageLib.getStorage();
         uint256[] storage heap = s.topHeapMax[account][marketId];
         if (heap.length == 0) {
+            // For non-DMM / resolving markets this will just be (0, 0),
+            // and SolvencyLib already only uses redeemable for DMM+non-res.
             return (0, 0);
         }
         uint256 blockId = heap[0];

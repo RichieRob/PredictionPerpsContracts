@@ -31,7 +31,7 @@ library FreeCollateralLib {
         s.realTotalFreeCollateral     += amount;
 
         // Mirror as ppUSDC mint
-        emitPpUSDCMint(account, amount);
+         //emitPpUSDCMint(account, amount); 
     }
 
     /// @notice Decrease freeCollateral for an account and emit ppUSDC burn event.
@@ -44,7 +44,7 @@ library FreeCollateralLib {
         s.realTotalFreeCollateral     -= amount;
 
         // Mirror as ppUSDC burn
-        emitPpUSDCBurn(account, amount);
+        //emitPpUSDCBurn(account, amount);
     }
 
     /// @notice Internal ppUSDC/freeCollateral transfer with NO events.

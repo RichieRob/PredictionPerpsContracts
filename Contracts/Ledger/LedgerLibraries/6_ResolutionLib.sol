@@ -102,7 +102,6 @@ library ResolutionLib {
             "Resolution: insufficient market value"
         );
 
-        s.Redemptions[marketId] += winnings;
         s.marketValue[marketId] -= winnings;
         s.TotalMarketsValue     -= winnings;
 
@@ -134,51 +133,54 @@ library ResolutionLib {
 
     /// @dev Walk all markets the user has touched and realise any pending winnings.
     ///      Uses swap-remove, so we need the `while` loop pattern.
-function _applyPendingWinnings(address user) internal {
+function _applyPendingWinnings(address user)
+    internal
+    returns (uint256 totalWinnings)
+{
     StorageLib.Storage storage s = StorageLib.getStorage();
     uint256[] storage markets = s.userMarkets[user];
 
     // 0) If this user has never touched a resolving market, nothing to do.
     if (markets.length == 0) {
-        // Keep their marker in sync so we don't re-scan unnecessarily later.
         s.userLastResolvedSeen[user] = s.totalResolvedMarkets;
-        return;
+        return 0;
     }
 
     // 1) If no *new* market has resolved since we last scanned this user,
     //    we know there can't be new winnings to claim.
     if (s.userLastResolvedSeen[user] == s.totalResolvedMarkets) {
-        return;
+        return 0;
     }
 
-    uint256 totalWinnings = 0;
     uint256 i = 0;
-
     while (i < markets.length) {
         uint256 marketId = markets[i];
 
         if (s.marketResolved[marketId]) {
             uint256 w = _claimForMarket(user, marketId);
-            totalWinnings += w;
-            // _claimForMarket may swap-remove markets[i], so don't ++i here.
+            if (w > 0) {
+                totalWinnings += w;
+            }
+            // NOTE: _claimForMarket may swap-remove markets[i], so we DO NOT ++i here.
         } else {
             unchecked { ++i; }
         }
     }
 
-    if (totalWinnings > 0) {
-        FreeCollateralLib.mintPpUSDC(user, totalWinnings);
-    }
-
     // 2) Record that we've scanned up to the current global resolution count.
     s.userLastResolvedSeen[user] = s.totalResolvedMarkets;
+
+    // IMPORTANT: no writes to realFreeCollateral / realTotalFreeCollateral here.
+    // Caller decides how to apply `totalWinnings`.
 }
+
 
 
     /// @dev Batch claim for an explicit list of markets (e.g. UI 'claim all for these').
     function _batchClaimWinnings(address user, uint256[] calldata marketIds)
         internal
     {
+        StorageLib.Storage storage s = StorageLib.getStorage();
         uint256 totalWinnings = 0;
 
         for (uint256 i = 0; i < marketIds.length; ++i) {
@@ -187,7 +189,8 @@ function _applyPendingWinnings(address user) internal {
         }
 
         if (totalWinnings > 0) {
-            FreeCollateralLib.mintPpUSDC(user, totalWinnings);
+            s.realFreeCollateral[user] += totalWinnings;
+            s.realTotalFreeCollateral  += totalWinnings;
         }
     }
 

@@ -130,11 +130,11 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
     const sig = await signIntent(fx.trader, intent);
 
     // Trader cancels BEFORE any fill
-    await fx.ledger.connect(fx.trader).cancelIntent(intent);
+    await fx.intentContract.connect(fx.trader).cancelIntent(intent);
 
     // Now any attempt to fill must revert
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner) // relayer
         .fillIntent(intent, sig, usdc("5"), usdc("50"))
     ).to.be.reverted;
@@ -165,7 +165,7 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
     const sig = await signIntent(fx.trader, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, sig, usdc("50"), usdc("5"))
     ).to.be.reverted;
@@ -195,7 +195,7 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
     const badSig = await signIntent(other, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, badSig, usdc("5"), usdc("50"))
     ).to.be.reverted;

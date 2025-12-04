@@ -90,14 +90,14 @@ describe("MarketMakerLedger – intent guardrails", () => {
 
   it("cannot fill a cancelled intent", async () => {
     const intent = await buildBaseIntent();
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     // Trader cancels first
-    await fx.ledger.connect(fx.trader).cancelIntent(intent);
+    await fx.intentContract.connect(fx.trader).cancelIntent(intent);
 
     // Now filler (owner) tries to fill – should revert
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(
           intent,
@@ -122,7 +122,7 @@ describe("MarketMakerLedger – intent guardrails", () => {
     const badSig = await signIntent(fx.ledger, fx.owner, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(
           intent,
@@ -146,10 +146,10 @@ describe("MarketMakerLedger – intent guardrails", () => {
       deadline: BigInt(now - 60), // already expired
     });
 
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(
           intent,

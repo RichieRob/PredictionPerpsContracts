@@ -26,7 +26,8 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       0n,
       false,
       ethers.ZeroAddress,
-      "0x"    );
+      "0x"
+    );
 
     const markets = await fx.ledger.getMarkets();
     fx.marketId = markets[0];
@@ -82,12 +83,12 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       deadline:      BigInt(Math.floor(Date.now() / 1000) + 3600),
     };
 
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
-    await fx.ledger.connect(fx.trader).cancelIntent(intent);
+    await fx.intentContract.connect(fx.trader).cancelIntent(intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, sig, intent.primaryAmount, intent.bound)
     ).to.be.reverted;
@@ -109,10 +110,11 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       deadline:      BigInt(Math.floor(Date.now() / 1000) + 3600),
     };
 
-    const badSig = await signIntent(fx.ledger, fx.owner, intent);
+    // bad signer: owner signs instead of trader
+    const badSig = await signIntent(fx.intentContract, fx.owner, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, badSig, intent.primaryAmount, intent.bound)
     ).to.be.reverted;
@@ -134,10 +136,10 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       deadline:      BigInt(Math.floor(Date.now() / 1000) - 3600), // expired
     };
 
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, sig, intent.primaryAmount, intent.bound)
     ).to.be.reverted;
@@ -159,10 +161,10 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       deadline:      BigInt(Math.floor(Date.now() / 1000) + 3600),
     };
 
-    const sigSellExact = await signIntent(fx.ledger, fx.trader, sellExact);
+    const sigSellExact = await signIntent(fx.intentContract, fx.trader, sellExact);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(
           sellExact,
@@ -178,10 +180,10 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       nonce: 5n,
     };
 
-    const sigSellFor = await signIntent(fx.ledger, fx.trader, sellFor);
+    const sigSellFor = await signIntent(fx.intentContract, fx.trader, sellFor);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(
           sellFor,
@@ -208,10 +210,10 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
       deadline:      BigInt(Math.floor(Date.now() / 1000) + 3600),
     };
 
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(fx.owner)
         .fillIntent(intent, sig, intent.primaryAmount, intent.bound)
     ).to.be.reverted;

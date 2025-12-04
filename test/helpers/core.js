@@ -40,7 +40,7 @@ async function deployCore() {
   const ppUSDC = await PpUSDC.deploy();
   await ppUSDC.waitForDeployment();
 
-  const Ledger = await ethers.getContractFactory("Ledger"); // Use "Ledger" now
+  const Ledger = await ethers.getContractFactory("Ledger");
   const ledger = await Ledger.deploy(
     await usdcToken.getAddress(),
     await aUSDC.getAddress(),
@@ -48,16 +48,29 @@ async function deployCore() {
     ethers.ZeroAddress, // permit2 unused
     await ppUSDC.getAddress()
   );
-  await ledger.waitForDeployment(); // NEW: Deploy PositionERC20 and set it const PositionERC20 = await ethers.getContractFactory("PositionERC20"); const positionImpl = await PositionERC20.deploy(await fx.ledger.getAddress()); await positionImpl.waitForDeployment(); await fx.ledger.connect(fx.owner).setPositionERC20Implementation(await positionImpl.getAddress());
+  await ledger.waitForDeployment();
 
   await ppUSDC.setLedger(await ledger.getAddress());
 
-  // NEW: Deploy PositionERC20 and set it on ledger
+  // Deploy PositionERC20 and set it on ledger
   const PositionERC20 = await ethers.getContractFactory("PositionERC20");
   const positionImpl = await PositionERC20.deploy(await ledger.getAddress());
   await positionImpl.waitForDeployment();
 
-  await ledger.connect(owner).setPositionERC20Implementation(await positionImpl.getAddress());
+  await ledger
+    .connect(owner)
+    .setPositionERC20Implementation(await positionImpl.getAddress());
+
+  // 🔹 NEW: Deploy IntentContract and register it on the ledger
+  const IntentContract = await ethers.getContractFactory("IntentContract");
+  const intentContract = await IntentContract.deploy(
+    await ledger.getAddress()
+  );
+  await intentContract.waitForDeployment();
+
+  await ledger
+    .connect(owner)
+    .setIntentContract(await intentContract.getAddress(), true);
 
   return {
     owner,
@@ -69,6 +82,8 @@ async function deployCore() {
     aavePool,
     ppUSDC,
     ledger,
+    positionImpl,
+    intentContract,
   };
 }
 

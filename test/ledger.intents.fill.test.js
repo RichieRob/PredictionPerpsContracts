@@ -103,7 +103,7 @@ describe("MarketMakerLedger – intents", () => {
       ),
     };
 
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     // Filler will be fx.owner (we call fillIntent via .connect(fx.owner))
     const beforeOwnerWallet = await fx.usdc.balanceOf(fx.owner.address);
@@ -112,7 +112,7 @@ describe("MarketMakerLedger – intents", () => {
     // --------------------------------------------------------------------
     // 3) Fill the intent on-chain
     // --------------------------------------------------------------------
-    await fx.ledger
+    await fx.intentContract
       .connect(fx.owner)
       .fillIntent(
         intent,

@@ -26,7 +26,7 @@ const INTENT_TYPES = {
 };
 
 describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", function () {
-  let fx;   // { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger }
+  let fx;   // { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger, intentContract }
   let mm;   // FlatMockMarketMaker (DMM)
   let marketId;
   let positionId;
@@ -52,7 +52,8 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
       0n,
       false,
       ethers.ZeroAddress,
-      "0x"    );
+      "0x"
+    );
 
     const markets = await fx.ledger.getMarkets();
     marketId = markets[0];
@@ -108,13 +109,13 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
         EMPTY_PERMIT
       );
 
-    // --- EIP-712 domain for this ledger ---
+    // --- EIP-712 domain for this IntentContract (NOT the ledger!) ---
     const { chainId } = await ethers.provider.getNetwork();
     domain = {
       name: "PredictionPerps-Intents",
       version: "1",
       chainId,
-      verifyingContract: await fx.ledger.getAddress(),
+      verifyingContract: await fx.intentContract.getAddress(),
     };
   });
 
@@ -147,7 +148,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
     const fill1Primary = usdc("80");
     const fill1Quote   = usdc("8");
 
-    await fx.ledger
+    await fx.intentContract
       .connect(relayer)
       .fillIntent(intent, sig, fill1Primary, fill1Quote);
 
@@ -161,7 +162,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
     const fill2Primary = usdc("120");
     const fill2Quote   = usdc("12");
 
-    await fx.ledger
+    await fx.intentContract
       .connect(relayer)
       .fillIntent(intent, sig, fill2Primary, fill2Quote);
 
@@ -176,7 +177,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
     const overQuote   = usdc("1");
 
     await expect(
-      fx.ledger
+      fx.intentContract
         .connect(relayer)
         .fillIntent(intent, sig, overPrimary, overQuote)
     ).to.be.reverted;

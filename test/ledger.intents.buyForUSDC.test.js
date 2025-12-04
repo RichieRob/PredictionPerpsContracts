@@ -123,22 +123,22 @@ describe("MarketMakerLedger – BUY_FOR_USDC intents", () => {
     const intent = await buildBaseIntent();
 
     // Sign intent with trader key
-    const sig = await signIntent(fx.ledger, fx.trader, intent);
+    const sig = await signIntent(fx.intentContract, fx.trader, intent);
 
     const traderFreeBefore = await fx.ledger.realFreeCollateral(
       fx.trader.address
     );
 
     // Filler (owner) executes the intent
-    await fx.ledger
-      .connect(fx.owner)
-      .fillIntent(
-        intent,
-        sig,
-        intent.primaryAmount,  // fillPrimary = 50 USDC
-        intent.bound           // fillQuote   = minTokensOut (5)
-      );
-
+    await fx.intentContract
+    .connect(fx.owner)
+    .fillIntent(
+      intent,
+      sig,
+      intent.primaryAmount,   // fillPrimary = 50 USDC
+      intent.bound            // fillQuote   = minTokensOut (5)
+    );
+  
     const traderFreeAfter = await fx.ledger.realFreeCollateral(
       fx.trader.address
     );

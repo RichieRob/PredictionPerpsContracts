@@ -118,8 +118,7 @@ async function expectFeeDepositState(fx, { amount, bps }) {
     amount,
     0n,      // minUSDCDeposited
     0,       // mode = allowance
-    EMPTY_PERMIT,
-    "0x"
+    EMPTY_PERMIT
   );
 
   const feeExpected = (amount * BigInt(bps)) / 10_000n;
@@ -164,8 +163,7 @@ async function expectDepositBelowMinReverts(fx, { amount, bps }) {
       amount,
       minUSDCDeposited,
       0,
-      EMPTY_PERMIT,
-      "0x"
+      EMPTY_PERMIT
     )
   ).to.be.reverted;
 }

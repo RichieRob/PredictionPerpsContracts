@@ -4,26 +4,21 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Interfaces/ILedger.sol";
 
 import "./LedgerLibraries/0_Types.sol";
 import "./LedgerLibraries/0_TypesPermit.sol";
 
 import "./LedgerLibraries/1_StorageLib.sol";
-import "./LedgerLibraries/2_FreeCollateralLib.sol";
 import "./LedgerLibraries/2_MarketManagementLib.sol";
 import "./LedgerLibraries/2_ProtocolFeeLib.sol";
 import "./LedgerLibraries/2_IntentLib.sol";
-import "./LedgerLibraries/3_HeapLib.sol";
-import "./LedgerLibraries/4_SolvencyLib.sol";
 import "./LedgerLibraries/5_LedgerLib.sol";
-import "./LedgerLibraries/5_LedgerInvariantViews.sol";
 import "./LedgerLibraries/6_ResolutionLib.sol";
 import "./LedgerLibraries/7_DepositWithdrawLib.sol";
-import "./LedgerLibraries/7_PositionTransferLib.sol";
 import "./LedgerLibraries/8_ERC20BridgeLib.sol";
 import "./LedgerLibraries/8_FillIntentLib.sol";
 import "./LedgerLibraries/9_TradeRouterLib.sol";
+import "./LedgerLibraries/5_LedgerInvariantViews.sol";
 
 
 
@@ -52,16 +47,16 @@ contract Ledger {
     using MarketManagementLib for *;
     using LedgerLib for *;
 
-    event Deposited(address indexed account, uint256 amount);
-    event Withdrawn(address indexed account, uint256 amount);
-    event TiltUpdated(address indexed account, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
-    event Bought(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
-    event Sold(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
-    event Redeemed(uint256 indexed marketId, uint256 amount);
-    event MarketMakerRegistered(address indexed mmAddress, address account);
-    event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
-    event DMMAllowed(address indexed account, bool allowed);
-    event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
+    // event Deposited(address indexed account, uint256 amount);
+    // event Withdrawn(address indexed account, uint256 amount);
+    // event TiltUpdated(address indexed account, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
+    // event Bought(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
+    // event Sold(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
+    // event Redeemed(uint256 indexed marketId, uint256 amount);
+    // event MarketMakerRegistered(address indexed mmAddress, address account);
+    // event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
+    // event DMMAllowed(address indexed account, bool allowed);
+    // event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
 
 
 
@@ -525,7 +520,7 @@ function getPositionDetails(uint256 marketId, uint256 positionId)
     function allowDMM(address account, bool allowed) external onlyOwner {
         StorageLib.Storage storage s = StorageLib.getStorage();
         s.allowedDMMs[account] = allowed;
-        emit DMMAllowed(account, allowed);
+        // emit DMMAllowed(account, allowed);
     }
 
 // set the ERC20 Implementation
@@ -609,8 +604,7 @@ function deposit(
     uint256 amount,
     uint256 minUSDCDeposited,
     uint8   mode,
-    TypesPermit.EIP2612Permit calldata eipPermit,   // only used if mode==1
-    bytes  calldata permit2Calldata                 // only used if mode==2
+    TypesPermit.EIP2612Permit calldata eipPermit               // only used if mode==2
 ) external {
     uint256 recorded = DepositWithdrawLib.depositFromTraderUnified(
         to,        // ledger account credited
@@ -618,16 +612,15 @@ function deposit(
         amount,
         minUSDCDeposited,
         mode,
-        eipPermit,
-        permit2Calldata
+        eipPermit
     );
 
-    emit Deposited(msg.sender, recorded);
+    // emit Deposited(msg.sender, recorded);
 }
 
 function withdraw(uint256 amount, address to) external {
     DepositWithdrawLib.withdrawWithClaims(msg.sender, amount, to);
-    emit Withdrawn(msg.sender, amount);
+    // emit Withdrawn(msg.sender, amount);
 }
 
 //ERC20 Transfers
@@ -710,16 +703,16 @@ function fillIntent(
 ) external {
     // Filler is msg.sender; FillIntentLib will use that.
     FillIntentLib._fillIntent(intent, signature, fillPrimary, fillQuote);
-            emit IntentFilled(
-            msg.sender,
-            intent.trader,
-            intent.marketId,
-            intent.positionId,
-            intent.kind,
-            intent.isBack,
-            fillPrimary,
-            fillQuote
-        );
+        //     emit IntentFilled(
+        //     msg.sender,
+        //     intent.trader,
+        //     intent.marketId,
+        //     intent.positionId,
+        //     intent.kind,
+        //     intent.isBack,
+        //     fillPrimary,
+        //     fillQuote
+        // );
 }
 
 
@@ -735,65 +728,65 @@ function resolveMarket(uint256 marketId, uint256 winningPositionId)
     ResolutionLib._resolveMarketCore(marketId, winningPositionId);
 }
 
-// NEW: Extended structs with token address and symbol
-struct PositionInfoExtended {
-    uint256 positionId;
-    string name;
-    string ticker;
-    address tokenAddress;  // ERC20 token address for this position
-    string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
-}
+// // NEW: Extended structs with token address and symbol
+// struct PositionInfoExtended {
+//     uint256 positionId;
+//     string name;
+//     string ticker;
+//     address tokenAddress;  // ERC20 token address for this position
+//     string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
+// }
 
-struct PositionInfoWithBalanceExtended {
-    uint256 positionId;
-    string name;
-    string ticker;
-    address tokenAddress;  // ERC20 token address for this position
-    string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
-    uint256 balance;
-}
+// struct PositionInfoWithBalanceExtended {
+//     uint256 positionId;
+//     string name;
+//     string ticker;
+//     address tokenAddress;  // ERC20 token address for this position
+//     string erc20Symbol;    // ERC20 symbol (e.g., "TICKER-MARKET")
+//     uint256 balance;
+// }
 
 // NEW: Extended version without balances (for no wallet connected)
-function getMarketPositionsInfoExtended(uint256 marketId) 
-    external 
-    view 
-    returns (PositionInfoExtended[] memory infos) 
-{
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256 count = s.nextPositionId[marketId];
-    infos = new PositionInfoExtended[](count);
+// function getMarketPositionsInfoExtended(uint256 marketId) 
+//     external 
+//     view 
+//     returns (PositionInfoExtended[] memory infos) 
+// {
+//     StorageLib.Storage storage s = StorageLib.getStorage();
+//     uint256 count = s.nextPositionId[marketId];
+//     infos = new PositionInfoExtended[](count);
 
-    for (uint256 i = 0; i < count; i++) {
-        infos[i].positionId = i;
-        infos[i].name = s.positionNames[marketId][i];
-        infos[i].ticker = s.positionTickers[marketId][i];
-        infos[i].tokenAddress = s.positionERC20[marketId][i];
-        infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
-    }
-}
+//     for (uint256 i = 0; i < count; i++) {
+//         infos[i].positionId = i;
+//         infos[i].name = s.positionNames[marketId][i];
+//         infos[i].ticker = s.positionTickers[marketId][i];
+//         infos[i].tokenAddress = s.positionERC20[marketId][i];
+//         infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
+//     }
+// }
 
-// NEW: Extended version with balances (for wallet connected)
-function getMarketPositionsInfoForAccountExtended(uint256 marketId, address account) 
-    external 
-    view 
-    returns (PositionInfoWithBalanceExtended[] memory infos) 
-{
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    uint256 count = s.nextPositionId[marketId];
-    infos = new PositionInfoWithBalanceExtended[](count);
+// // NEW: Extended version with balances (for wallet connected)
+// function getMarketPositionsInfoForAccountExtended(uint256 marketId, address account) 
+//     external 
+//     view 
+//     returns (PositionInfoWithBalanceExtended[] memory infos) 
+// {
+//     StorageLib.Storage storage s = StorageLib.getStorage();
+//     uint256 count = s.nextPositionId[marketId];
+//     infos = new PositionInfoWithBalanceExtended[](count);
 
-    for (uint256 i = 0; i < count; i++) {
-        infos[i].positionId = i;
-        infos[i].name = s.positionNames[marketId][i];
-        infos[i].ticker = s.positionTickers[marketId][i];
-        infos[i].tokenAddress = s.positionERC20[marketId][i];
-        infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
+//     for (uint256 i = 0; i < count; i++) {
+//         infos[i].positionId = i;
+//         infos[i].name = s.positionNames[marketId][i];
+//         infos[i].ticker = s.positionTickers[marketId][i];
+//         infos[i].tokenAddress = s.positionERC20[marketId][i];
+//         infos[i].erc20Symbol = _erc20Symbol(marketId, i);  // Reuse your existing erc20Symbol function
 
-        // Compute balance internally (mirrors balanceOf logic)
-        int256 avail = LedgerLib.getCreatedShares(account, marketId, i);
-        infos[i].balance = (avail > 0) ? uint256(avail) : 0;
-    }
-}
+//         // Compute balance internally (mirrors balanceOf logic)
+//         int256 avail = LedgerLib.getCreatedShares(account, marketId, i);
+//         infos[i].balance = (avail > 0) ? uint256(avail) : 0;
+//     }
+// }
 
 // EXPOSE LIBRARY FOR TESTS
 

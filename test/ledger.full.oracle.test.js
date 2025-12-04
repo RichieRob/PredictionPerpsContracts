@@ -36,12 +36,12 @@ describe("MarketMakerLedger – Oracle driven resolution", () => {
     // trader funded
     await fx.usdc.mint(fx.trader.address, usdc("1000"));
     await fx.usdc.connect(fx.trader).approve(await fx.ledger.getAddress(), usdc("1000"));
-    await fx.ledger.connect(fx.trader).deposit(fx.trader.address, usdc("1000"),0,0,EMPTY_PERMIT,"0x");
+    await fx.ledger.connect(fx.trader).deposit(fx.trader.address, usdc("1000"),0,0,EMPTY_PERMIT);
 
     // MM funded so it can sell
     await fx.usdc.mint(fx.owner.address, usdc("2000"));
     await fx.usdc.connect(fx.owner).approve(await fx.ledger.getAddress(), usdc("2000"));
-    await fx.ledger.connect(fx.owner).deposit(await mm.getAddress(), usdc("1500"),0,0,EMPTY_PERMIT,"0x");
+    await fx.ledger.connect(fx.owner).deposit(await mm.getAddress(), usdc("1500"),0,0,EMPTY_PERMIT);
 
     // buy Alice shares
     await fx.ledger.connect(fx.trader).buyExactTokens(

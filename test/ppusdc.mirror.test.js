@@ -37,8 +37,7 @@ describe("PpUSDC mirror behaviour", function () {
         amount,
         minUSDCDeposited,
         mode,
-        EMPTY_PERMIT,
-        "0x" // permit2Calldata
+        EMPTY_PERMIT
       );
   }
 

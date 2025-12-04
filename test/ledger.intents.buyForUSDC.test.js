@@ -53,8 +53,7 @@ describe("MarketMakerLedger – BUY_FOR_USDC intents", () => {
         usdc("500000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // --- Give filler (owner) some BACK inventory to sell P2P ---
@@ -71,8 +70,7 @@ describe("MarketMakerLedger – BUY_FOR_USDC intents", () => {
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // Owner buys 40 BACK tokens from DMM so they have inventory
@@ -101,8 +99,7 @@ describe("MarketMakerLedger – BUY_FOR_USDC intents", () => {
         usdc("500"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
   });
 

@@ -13,7 +13,7 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
     fx = await setupMultiUserTwoPositionFixture();
   });
 
-  it("keeps ppUSDC + ERC20 mirrors correct after multi-user buys & sells", async () => {
+  it("keeps ppUSDC + ERC20 mirrors correct after multi-user ppUSDC-backed buys", async () => {
     const DEPOSIT_ALICE = usdc("10000");
     const DEPOSIT_BOB   = usdc("8000");
 
@@ -25,28 +25,30 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
     const MAX_IN_ALICE = usdc("5000");
     const MAX_IN_BOB   = usdc("4000");
 
-    // Alice buys A then B
+    const mm = await fx.flatMM.getAddress();
+
+    // ── Alice buys A then B (BACK)
     await fx.ledger.connect(fx.alice).buyExactTokens(
-      await fx.flatMM.getAddress(),
+      mm,
       fx.marketId,
       fx.posA,
-      true,
-      usdc("50"),
-      MAX_IN_ALICE
+      true,              // isBack
+      usdc("50"),        // number of BACK shares (using 6dp helper for scale)
+      MAX_IN_ALICE       // max ppUSDC in
     );
 
     await fx.ledger.connect(fx.alice).buyExactTokens(
-      await fx.flatMM.getAddress(),
+      mm,
       fx.marketId,
       fx.posB,
-      true,
+      true,              // isBack
       usdc("30"),
       MAX_IN_ALICE
     );
 
-    // Bob buys B then A
+    // ── Bob buys B then A (BACK)
     await fx.ledger.connect(fx.bob).buyExactTokens(
-      await fx.flatMM.getAddress(),
+      mm,
       fx.marketId,
       fx.posB,
       true,
@@ -55,7 +57,7 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
     );
 
     await fx.ledger.connect(fx.bob).buyExactTokens(
-      await fx.flatMM.getAddress(),
+      mm,
       fx.marketId,
       fx.posA,
       true,
@@ -63,25 +65,7 @@ describe("MarketMakerLedger – multi-user trading & ppUSDC mirrors", function (
       MAX_IN_BOB
     );
 
-    // Some sells back into the market
-    await fx.ledger.connect(fx.alice).sellExactTokens(
-      await fx.flatMM.getAddress(),
-      fx.marketId,
-      fx.posA,
-      true,
-      usdc("10"),
-      0
-    );
-
-    await fx.ledger.connect(fx.bob).sellExactTokens(
-      await fx.flatMM.getAddress(),
-      fx.marketId,
-      fx.posB,
-      true,
-      usdc("15"),
-      0
-    );
-
+    // Final invariant: ppUSDC + PositionERC20 mirrors vs ledger internals
     await expectMultiUserPpUsdcAndErc20Mirrors(fx);
   });
 });

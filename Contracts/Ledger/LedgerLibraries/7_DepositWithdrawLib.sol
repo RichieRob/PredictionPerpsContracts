@@ -3,9 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 import "../Interfaces/IERC20Permit.sol";
-import "../Interfaces/IPermit2.sol";
 import "./0_TypesPermit.sol";
-import "./2_FreeCollateralLib.sol";
 import "./2_ProtocolFeeLib.sol";
 import "./6_ResolutionLib.sol";
 
@@ -58,7 +56,8 @@ library DepositWithdrawLib {
         require(recordedAmount >= minUSDCDeposited, "Deposit below minimum");
 
         // 4. Credit net collateral to `to`
-        FreeCollateralLib.mintPpUSDC(to, recordedAmount);
+         s.realFreeCollateral[to] += recordedAmount;
+         s.realTotalFreeCollateral  += recordedAmount;
 
         //    Mirror deposit as ppUSDC mint *based on user USDC in*
         if (recordedAmount > 0) {
@@ -124,30 +123,6 @@ library DepositWithdrawLib {
         recordedAmount = _internalDeposit(trader, account, amount, minUSDCDeposited);
     }
 
-    // -----------------------------------------------------------------------
-    // 3) Deposit using Permit2
-    // -----------------------------------------------------------------------
-    function depositFromTraderWithPermit2(
-        address account,
-        address trader,
-        uint256 amount,
-        uint256 minUSDCDeposited,
-        bytes calldata permit2Calldata
-    ) internal returns (uint256 recordedAmount) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        require(s.permit2 != address(0), "Permit2 not set");
-
-        // 1. Permit2 transfer to ledger (this already pulls tokens)
-        IPermit2(s.permit2).permitTransferFrom(
-            permit2Calldata,
-            trader,
-            address(this),
-            amount
-        );
-
-        // 2. Shared internalDeposit, but skip transferFrom (from = address(0))
-        recordedAmount = _internalDeposit(address(0), account, amount, minUSDCDeposited);
-    }
 
     // -----------------------------------------------------------------------
     // Unified 3-way helper
@@ -159,15 +134,13 @@ library DepositWithdrawLib {
     /// @param minUSDCDeposited   Min credited after fees.
     /// @param mode               0=allowance, 1=EIP-2612, 2=Permit2.
     /// @param eipPermit          Only used if mode==1.
-    /// @param permit2Calldata    Only used if mode==2.
     function depositFromTraderUnified(
         address account,
         address trader,
         uint256 amount,
         uint256 minUSDCDeposited,
         uint8  mode,
-        TypesPermit.EIP2612Permit memory eipPermit,
-        bytes calldata permit2Calldata
+        TypesPermit.EIP2612Permit memory eipPermit
     ) internal returns (uint256 recordedAmount) {
         if (mode == MODE_ALLOWANCE) {
             recordedAmount = depositFromTraderWithAllowance(
@@ -184,14 +157,6 @@ library DepositWithdrawLib {
                 minUSDCDeposited,
                 eipPermit
             );
-        } else if (mode == MODE_PERMIT2) {
-            recordedAmount = depositFromTraderWithPermit2(
-                account,
-                trader,
-                amount,
-                minUSDCDeposited,
-                permit2Calldata
-            );
         } else {
             revert("Deposit: invalid mode");
         }
@@ -206,7 +171,8 @@ library DepositWithdrawLib {
         require(to != address(0), "Invalid recipient");
 
         // This will revert internally if freeCollateral[account] < amount
-        FreeCollateralLib.burnPpUSDC(account, amount);
+        s.realFreeCollateral[account] -= amount;
+         s.realTotalFreeCollateral  -= amount;
 
         // Mirror user USDC-out as ppUSDC burn event
         if (amount > 0) {

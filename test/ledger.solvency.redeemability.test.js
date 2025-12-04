@@ -33,7 +33,7 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
         fx.positionId,
         true,              // isBack
         TOKENS_TO_BUY,
-        TRADER_DEPOSIT     // generous maxUSDCIn
+        TRADER_DEPOSIT     // generous max ppUSDC in
       );
     }
 
@@ -44,11 +44,11 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
     });
   });
 
-  it("keeps effMin >= 0 and margin >= 0 after buys + partial sells", async () => {
+  it("keeps effMin >= 0 and margin >= 0 after buys + partial hedge (opposite side)", async () => {
     const TRADER_DEPOSIT = usdc("5000");
     const BUY_TOKENS     = usdc("100");
-    const SELL_TOKENS    = usdc("30");
-    const MAX_USDC       = usdc("5000");
+    const HEDGE_TOKENS   = usdc("30");
+    const MAX_PPUSDC     = usdc("5000");
 
     await mintAndDeposit({
       usdc: fx.usdc,
@@ -57,26 +57,28 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
       amount: TRADER_DEPOSIT,
     });
 
-    // two buys to build a chunky long
+    const mm = await fx.flatMM.getAddress();
+
+    // two BACK buys to build a chunky long
     for (let i = 0; i < 2; i++) {
       await fx.ledger.connect(fx.trader).buyExactTokens(
-        await fx.flatMM.getAddress(),
+        mm,
         fx.marketId,
         fx.positionId,
-        true,
+        true,          // BACK
         BUY_TOKENS,
-        MAX_USDC
+        MAX_PPUSDC
       );
     }
 
-    // then a partial sell to flatten a bit
-    await fx.ledger.connect(fx.trader).sellExactTokens(
-      await fx.flatMM.getAddress(),
+    // then a smaller LAY buy as a "partial flatten" / hedge
+    await fx.ledger.connect(fx.trader).buyExactTokens(
+      mm,
       fx.marketId,
       fx.positionId,
-      true,
-      SELL_TOKENS,
-      0 // minUSDCOut
+      false,         // LAY (opposite side)
+      HEDGE_TOKENS,
+      MAX_PPUSDC
     );
 
     await expectSolventRedeemability(fx, {
@@ -88,7 +90,7 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
   it("keeps DMM solvent with ISC after trader activity", async () => {
     const TRADER_DEPOSIT = usdc("10000");
     const TOKENS_TO_BUY  = usdc("200");
-    const MAX_USDC       = usdc("10000");
+    const MAX_PPUSDC     = usdc("10000");
 
     await mintAndDeposit({
       usdc: fx.usdc,
@@ -105,7 +107,7 @@ describe("MarketMakerLedger – solvency & redeemability edge cases", function (
         fx.positionId,
         true,
         TOKENS_TO_BUY,
-        MAX_USDC
+        MAX_PPUSDC
       );
     }
 

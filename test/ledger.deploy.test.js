@@ -1,5 +1,6 @@
 // test/ledger.deployment.basic-deposit.test.js
 const { expect } = require("chai");
+const { ethers } = require("hardhat");
 const {
   usdc,
   deployCore,
@@ -43,18 +44,20 @@ describe("MarketMakerLedger – deployment & basic deposit", () => {
       .connect(user)
       .approve(await ledger.getAddress(), amount);
 
-    await expect(
-      ledger
-        .connect(user)
-        .deposit(
-          user.address,
-          amount,
-          0n,           // minUSDCDeposited
-          0,            // mode = allowance
-          EMPTY_PERMIT,
-          "0x"
-        )
-    ).to.emit(ledger, "Deposited");
+    const tx = await ledger
+      .connect(user)
+      .deposit(
+        user.address,
+        amount,
+        0n,           // minUSDCDeposited
+        0,            // mode = allowance
+        EMPTY_PERMIT
+      );
+
+    // Expect ppUSDC mint to user (mirror of deposit)
+    await expect(tx)
+      .to.emit(ppUSDC, "Transfer")
+      .withArgs(ethers.ZeroAddress, user.address, amount);
 
     // One helper checks all the mirrors and flows
     await expectDepositMirrorsEverything({

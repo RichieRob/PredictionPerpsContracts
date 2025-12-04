@@ -46,8 +46,7 @@ describe("LMSR + Ledger – large Lay trades remain solvent", function () {
         v: 0,
         r: "0x" + "0".repeat(64),
         s: "0x" + "0".repeat(64),
-      },
-      "0x"
+      }
     );
 
     // Baseline invariants pre-trade
@@ -130,8 +129,7 @@ describe("LMSR + Ledger – large Lay trades remain solvent", function () {
         v: 0,
         r: "0x" + "0".repeat(64),
         s: "0x" + "0".repeat(64),
-      },
-      "0x"
+      }
     );
 
     // Baseline invariants pre-trade

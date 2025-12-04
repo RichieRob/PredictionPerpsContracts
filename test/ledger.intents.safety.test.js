@@ -80,8 +80,7 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
         usdc("500000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // Trader has some collateral to spend against intents
@@ -97,8 +96,7 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // EIP-712 domain for this ledger

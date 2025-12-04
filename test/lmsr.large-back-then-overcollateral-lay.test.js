@@ -46,8 +46,7 @@ describe("LMSR + Ledger – large Back then Lay buy exceeding free ppUSDC nets o
         v: 0,
         r: "0x" + "0".repeat(64),
         s: "0x" + "0".repeat(64),
-      },
-      "0x"
+      }
     );
 
     // Baseline invariants pre-trade

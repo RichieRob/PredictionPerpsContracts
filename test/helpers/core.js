@@ -96,8 +96,7 @@ async function depositFromTrader({
     amount,
     minUSDCDeposited,
     mode,
-    EMPTY_PERMIT,
-    "0x"
+    EMPTY_PERMIT
   );
 
   return amount;

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./2_FreeCollateralLib.sol";
 import "./7_PositionTransferLib.sol";
 import "./4_SolvencyLib.sol";
 import "./3_AllocateCapitalLib.sol";

@@ -47,8 +47,7 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
         funding,
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // filler (owner)
@@ -63,8 +62,7 @@ describe("MarketMakerLedger – intents (failure cases)", () => {
         funding,
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
   });
 

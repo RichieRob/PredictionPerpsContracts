@@ -60,8 +60,7 @@ describe("MarketMakerLedger – intents", () => {
         usdc("1000"),
         0,
         0,                 // mode = allowance
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // Filler (relayer) = owner in this test
@@ -77,8 +76,7 @@ describe("MarketMakerLedger – intents", () => {
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     const beforeTraderFree = await fx.ledger.realFreeCollateral(

@@ -50,8 +50,7 @@ describe("MarketMakerLedger – intent guardrails", () => {
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // Owner (filler)
@@ -66,8 +65,7 @@ describe("MarketMakerLedger – intent guardrails", () => {
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
   });
 

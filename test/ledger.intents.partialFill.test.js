@@ -78,8 +78,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
         usdc("500000"),          // 500k USDC
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // 2) Deposit on behalf of the relayer/filler (owner address) so it can take the other side of intents
@@ -90,8 +89,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
         usdc("500000"),          // 500k USDC
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // --- Trader collateral for intent settlement ---
@@ -107,8 +105,7 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
         usdc("1000"),
         0,
         0,
-        EMPTY_PERMIT,
-        "0x"
+        EMPTY_PERMIT
       );
 
     // --- EIP-712 domain for this ledger ---

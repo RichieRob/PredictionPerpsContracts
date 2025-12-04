@@ -146,7 +146,6 @@ library StorageLib {
 
 
         // Permits
-        address permit2; // optional, set if using Permit2
 
         // Synthetic Liquidity (ISC) configuration.
         //

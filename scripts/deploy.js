@@ -34,7 +34,10 @@ async function main() {
   console.log("Getting MockAavePool factory...");
   const MockAavePool = await ethers.getContractFactory("MockAavePool");
   console.log("Deploying MockAavePool...");
-  const mockAavePool = await MockAavePool.deploy(mockUSDC.target, mockAUSDC.target);
+  const mockAavePool = await MockAavePool.deploy(
+    mockUSDC.target,
+    mockAUSDC.target
+  );
   await mockAavePool.waitForDeployment();
   console.log("✅ MockAavePool deployed to:", mockAavePool.target);
 
@@ -79,6 +82,33 @@ async function main() {
   await ledger.setPositionERC20Implementation(positionImpl.target);
   console.log("✅ Set PositionERC20 implementation");
 
+  // ─────────────── Deploy IntentContract ───────────────
+  console.log("Getting IntentContract factory...");
+  const IntentContract = await ethers.getContractFactory("IntentContract");
+
+  console.log("Deploying IntentContract...");
+  // ⚠️ If your constructor takes more args, adjust here.
+  const intentContract = await IntentContract.deploy(ledger.target);
+  await intentContract.waitForDeployment();
+  console.log("✅ IntentContract deployed to:", intentContract.target);
+
+  console.log("Allowing IntentContract on Ledger...");
+  const intentTx = await ledger.setIntentContract(
+    intentContract.target,
+    true
+  );
+  await intentTx.wait();
+  console.log("✅ IntentContract allowlisted on Ledger");
+
+  // ─────────────── Deploy LedgerViews ───────────────
+  console.log("Getting LedgerViews factory...");
+  const LedgerViews = await ethers.getContractFactory("LedgerViews");
+
+  console.log("Deploying LedgerViews...");
+  const ledgerViews = await LedgerViews.deploy(ledger.target);
+  await ledgerViews.waitForDeployment();
+  console.log("✅ LedgerViews deployed to:", ledgerViews.target);
+
   // ─────────────── Save deployments.json ───────────────
   const deployments = {
     chainId: chainId.toString(),
@@ -89,6 +119,8 @@ async function main() {
     PpUSDC: ppUSDC.target,
     Ledger: ledger.target,
     PositionERC20: positionImpl.target,
+    IntentContract: intentContract.target,
+    LedgerViews: ledgerViews.target,
     Permit2: PERMIT2_ADDRESS,
   };
 

@@ -201,57 +201,9 @@ library SolvencyLib {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Public-facing entrypoints
-    // -----------------------------------------------------------------------
 
-    /// @notice Main guard: ensure an account is solvent (and redeemable if applicable).
-    /// @dev This can only move real capital *into* the market (allocate).
-    ///
-    /// After running:
-    ///      effMin >= 0
-    ///      and, for DMM on non-resolving markets:
-    ///      netAlloc >= redeemable
-    function ensureSolvency(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
 
-        (uint256 alloc, ) = _rebalanceCore(st, true, false);
-        if (alloc > 0) {
-            AllocateCapitalLib.allocate(account, marketId, alloc);
-        }
-    }
 
-    /// @notice Try to pull real capital back out of this market into freeCollateral.
-    /// @dev Only safe if BOTH:
-    ///         effMin >= 0
-    ///         netAlloc >= redeemable   (when redeemable > 0, i.e. DMM + non-res)
-    ///      and, for the DMM, we don't end up purely on ISC.
-    function deallocateExcess(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (, uint256 dealloc) = _rebalanceCore(st, false, true);
-        if (dealloc > 0) {
-            AllocateCapitalLib.deallocate(account, marketId, dealloc);
-        }
-    }
-
-    /// @notice Full rebalance: first allocate if needed, then deallocate any safe excess.
-    /// @dev Behaviour for existing callers is preserved: this STILL MUTATES STATE.
-    function rebalanceFull(address account, uint256 marketId) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        State memory st = _loadState(s, account, marketId);
-
-        (uint256 alloc, uint256 dealloc) = _rebalanceCore(st, true, true);
-
-        if (alloc > 0) {
-            AllocateCapitalLib.allocate(account, marketId, alloc);
-        }
-        if (dealloc > 0) {
-            AllocateCapitalLib.deallocate(account, marketId, dealloc);
-        }
-    }
 
     /// @notice Full rebalance as a dry-run: first allocate if needed, then deallocate any safe excess.
     /// @dev VIEW-ONLY: does not modify storage.

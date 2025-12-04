@@ -1,7 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./LedgerLibraries/0_Types.sol";
+// If TradeKind is not defined in this file, import it or define it here.
+// Example:
+// enum TradeKind {
+//     BUY_EXACT_TOKENS,
+//     BUY_FOR_USDC,
+//     SELL_EXACT_TOKENS,
+//     SELL_FOR_USDC
+// }
+
+
+    enum TradeKind {
+    BUY_EXACT_TOKENS,
+    BUY_FOR_USDC
+    }
+
+struct Intent {
+    address  trader;
+    uint256  marketId;
+    uint256  positionId;
+    bool     isBack;
+    TradeKind kind;
+    uint256  primaryAmount; // t or usdc depending on kind
+    uint256  bound;         // slippage bound (maxUSDCIn / minTokensOut / etc.)
+    uint256  nonce;
+    uint256  deadline;
+}
 
 interface ILedgerIntent {
     function settleIntentP2P(
@@ -34,7 +59,7 @@ contract IntentContract {
     );
 
     // ─────────────────────────────────────────────
-    // EIP-712 constants (copy of your IntentLib)
+    // EIP-712 constants
     // ─────────────────────────────────────────────
 
     bytes32 internal constant EIP712_DOMAIN_TYPEHASH = keccak256(
@@ -76,7 +101,7 @@ contract IntentContract {
         );
     }
 
-    function _hashIntent(Types.Intent memory intent)
+    function _hashIntent(Intent memory intent)
         internal
         pure
         returns (bytes32)
@@ -97,7 +122,7 @@ contract IntentContract {
         );
     }
 
-    function _digest(Types.Intent memory intent)
+    function _digest(Intent memory intent)
         internal
         view
         returns (bytes32)
@@ -112,7 +137,7 @@ contract IntentContract {
     }
 
     function _recoverSigner(
-        Types.Intent memory intent,
+        Intent memory intent,
         bytes memory sig
     ) internal view returns (address) {
         require(sig.length == 65, "bad sig length");
@@ -131,11 +156,11 @@ contract IntentContract {
     }
 
     // ─────────────────────────────────────────────
-    // Core settlement logic (was FillIntentLib)
+    // Core settlement logic
     // ─────────────────────────────────────────────
 
     function fillIntent(
-        Types.Intent calldata intent,
+        Intent calldata intent,
         bytes calldata signature,
         uint256 fillPrimary,  // tokens
         uint256 fillQuote     // ppUSDC / USDC
@@ -147,8 +172,8 @@ contract IntentContract {
 
         // Only BUY intents supported
         require(
-            intent.kind == Types.TradeKind.BUY_EXACT_TOKENS ||
-            intent.kind == Types.TradeKind.BUY_FOR_USDC,
+            intent.kind == TradeKind.BUY_EXACT_TOKENS ||
+            intent.kind == TradeKind.BUY_FOR_USDC,
             "intent kind not supported"
         );
 
@@ -175,9 +200,9 @@ contract IntentContract {
         require(seller != address(0), "seller=0");
         require(seller != buyer, "self-fill not allowed");
 
-        // --- Price guards (same logic as your FillIntentLib) ---
+        // --- Price guards ---
 
-        if (intent.kind == Types.TradeKind.BUY_EXACT_TOKENS) {
+        if (intent.kind == TradeKind.BUY_EXACT_TOKENS) {
             // (fillQuote / fillPrimary) <= (bound / primaryAmount)
             require(
                 fillQuote * intent.primaryAmount
@@ -212,7 +237,7 @@ contract IntentContract {
         );
     }
 
-    function cancelIntent(Types.Intent calldata intent) external {
+    function cancelIntent(Intent calldata intent) external {
         require(intent.trader == msg.sender, "not trader");
 
         bytes32 key = _hashIntent(intent);

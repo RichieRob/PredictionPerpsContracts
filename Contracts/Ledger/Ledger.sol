@@ -15,7 +15,7 @@ import "./LedgerLibraries/6_ResolutionLib.sol";
 import "./LedgerLibraries/7_DepositWithdrawLib.sol";
 import "./LedgerLibraries/8_ERC20BridgeLib.sol";
 import "./LedgerLibraries/9_TradeRouterLib.sol";
-import "./LedgerLibraries/5_LedgerInvariantViews.sol";
+//import "./LedgerLibraries/5_LedgerInvariantViews.sol";
 import "./LedgerLibraries/7a_SettlementLib.sol";
 
 struct PositionInfo {
@@ -32,22 +32,7 @@ struct PositionInfoWithBalance {
 }
 
 // Extended structs with token address and symbol
-struct PositionInfoExtended {
-    uint256 positionId;
-    string name;
-    string ticker;
-    address tokenAddress;
-    string erc20Symbol;
-}
 
-struct PositionInfoWithBalanceExtended {
-    uint256 positionId;
-    string name;
-    string ticker;
-    address tokenAddress;
-    string erc20Symbol;
-    uint256 balance;
-}
 
 contract Ledger {
     using MarketManagementLib for *;
@@ -81,7 +66,6 @@ contract Ledger {
         s.usdc = IERC20(_usdc);
         s.aUSDC = IERC20(_aUSDC);
         s.aavePool = IAavePool(_aavePool);
-        s.permit2 = _permit2; // may be address(0) if unused
         s.ppUSDC = IERC20(_ppUSDC);
     }
 
@@ -131,54 +115,7 @@ contract Ledger {
         );
     }
 
-    // ─────────────────────────────────────────────
-    // Extended view helpers for UI
-    // ─────────────────────────────────────────────
-
-    /// @notice All positions in a market, with token address and ERC20 symbol.
-    function getMarketPositionsInfoExtended(uint256 marketId)
-        external
-        view
-        returns (PositionInfoExtended[] memory infos)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256 count = s.nextPositionId[marketId];
-        infos = new PositionInfoExtended[](count);
-
-        for (uint256 i = 0; i < count; i++) {
-            infos[i].positionId   = i;
-            infos[i].name         = s.positionNames[marketId][i];
-            infos[i].ticker       = s.positionTickers[marketId][i];
-            infos[i].tokenAddress = s.positionERC20[marketId][i];
-            infos[i].erc20Symbol  = _erc20Symbol(marketId, i);
-        }
-    }
-
-    /// @notice All positions in a market with balances for a given account.
-    function getMarketPositionsInfoForAccountExtended(
-        uint256 marketId,
-        address account
-    )
-        external
-        view
-        returns (PositionInfoWithBalanceExtended[] memory infos)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        uint256 count = s.nextPositionId[marketId];
-        infos = new PositionInfoWithBalanceExtended[](count);
-
-        for (uint256 i = 0; i < count; i++) {
-            infos[i].positionId   = i;
-            infos[i].name         = s.positionNames[marketId][i];
-            infos[i].ticker       = s.positionTickers[marketId][i];
-            infos[i].tokenAddress = s.positionERC20[marketId][i];
-            infos[i].erc20Symbol  = _erc20Symbol(marketId, i);
-
-            // Compute balance internally (mirrors balanceOf logic)
-            int256 avail = LedgerLib.getCreatedShares(account, marketId, i);
-            infos[i].balance = (avail > 0) ? uint256(avail) : 0;
-        }
-    }
+   
 
     // --- market / position management  ---
 
@@ -681,74 +618,74 @@ contract Ledger {
         ResolutionLib._resolveMarketCore(marketId, winningPositionId);
     }
 
-    // EXPOSE LIBRARY FOR TESTS
+    // // EXPOSE LIBRARY FOR TESTS
 
-    function invariant_marketAccounting(uint256 marketId)
-        external
-        view
-        returns (uint256 lhs, uint256 rhs)
-    {
-        return LedgerInvariantViews.marketAccounting(marketId);
-    }
+    // function invariant_marketAccounting(uint256 marketId)
+    //     external
+    //     view
+    //     returns (uint256 lhs, uint256 rhs)
+    // {
+    //     return LedgerInvariantViews.marketAccounting(marketId);
+    // }
 
-    function invariant_iscWithinLine(uint256 marketId)
-        external
-        view
-        returns (uint256 used, uint256 line)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        used = LedgerInvariantViews.iscSpent(marketId);
-        line = s.syntheticCollateral[marketId];
-    }
+    // function invariant_iscWithinLine(uint256 marketId)
+    //     external
+    //     view
+    //     returns (uint256 used, uint256 line)
+    // {
+    //     StorageLib.Storage storage s = StorageLib.getStorage();
+    //     used = LedgerInvariantViews.iscSpent(marketId);
+    //     line = s.syntheticCollateral[marketId];
+    // }
 
-    function invariant_effectiveMin(address account, uint256 marketId)
-        external
-        view
-        returns (int256 effMin)
-    {
-        return LedgerInvariantViews.effectiveMinShares(account, marketId);
-    }
+    // function invariant_effectiveMin(address account, uint256 marketId)
+    //     external
+    //     view
+    //     returns (int256 effMin)
+    // {
+    //     return LedgerInvariantViews.effectiveMinShares(account, marketId);
+    // }
 
-    function invariant_systemFunding(uint256 marketId)
-        external
-        view
-        returns (uint256 fullSetsSystem)
-    {
-        return LedgerInvariantViews.totalFullSets(marketId);
-    }
+    // function invariant_systemFunding(uint256 marketId)
+    //     external
+    //     view
+    //     returns (uint256 fullSetsSystem)
+    // {
+    //     return LedgerInvariantViews.totalFullSets(marketId);
+    // }
 
-    function invariant_tvl()
-        external
-        view
-        returns (uint256 tvl, uint256 aUSDCBalance)
-    {
-        return LedgerInvariantViews.tvlAccounting();
-    }
+    // function invariant_tvl()
+    //     external
+    //     view
+    //     returns (uint256 tvl, uint256 aUSDCBalance)
+    // {
+    //     return LedgerInvariantViews.tvlAccounting();
+    // }
 
-    function invariant_systemBalance()
-        external
-        view
-        returns (uint256 lhs, uint256 rhs)
-    {
-        return LedgerInvariantViews.systemBalance();
-    }
+    // function invariant_systemBalance()
+    //     external
+    //     view
+    //     returns (uint256 lhs, uint256 rhs)
+    // {
+    //     return LedgerInvariantViews.systemBalance();
+    // }
 
-    function invariant_checkSolvencyAllMarkets(address account)
-        external
-        view
-        returns (bool ok)
-    {
-        return LedgerInvariantViews.checkSolvencyAllMarkets(account);
-    }
+    // function invariant_checkSolvencyAllMarkets(address account)
+    //     external
+    //     view
+    //     returns (bool ok)
+    // {
+    //     return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+    // }
 
-    function invariant_redeemabilityState(
-        address account,
-        uint256 marketId
-    )
-        external
-        view
-        returns (int256 netAlloc, int256 redeemable, int256 margin)
-    {
-        return LedgerInvariantViews.redeemabilityState(account, marketId);
-    }
+    // function invariant_redeemabilityState(
+    //     address account,
+    //     uint256 marketId
+    // )
+    //     external
+    //     view
+    //     returns (int256 netAlloc, int256 redeemable, int256 margin)
+    // {
+    //     return LedgerInvariantViews.redeemabilityState(account, marketId);
+    // }
 }

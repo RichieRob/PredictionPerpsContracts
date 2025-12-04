@@ -126,30 +126,5 @@ library AllocateCapitalLib {
         _applyGlobalDeltas(s, marketId, d);
     }
 
-    // ─────────────────────────────────────────────
-    // Existing allocate/deallocate still work
-    // ─────────────────────────────────────────────
 
-    function allocate(
-        address account,
-        uint256 marketId,
-        uint256 amount
-    ) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        CapitalDeltas memory d = _capitalDeltasView(amount, true);
-
-        // Original semantics preserved:
-        _applyCapitalDeltas(s, account, marketId, d);
-    }
-
-    function deallocate(
-        address account,
-        uint256 marketId,
-        uint256 amount
-    ) internal {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        CapitalDeltas memory d = _capitalDeltasView(amount, false);
-
-        _applyCapitalDeltas(s, account, marketId, d);
-    }
 }

@@ -9,9 +9,9 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1, // low runs, prioritise size
+        runs: 200, // low runs, prioritise size
       },
-      viaIR: true,
+      viaIR: false,
       debug: {
         revertStrings: "strip", // strip revert strings to save size
       },

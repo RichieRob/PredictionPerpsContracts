@@ -64,7 +64,6 @@ library SettlementLib {
         acc.realTotalFreeCollateral   += d.realTotalFreeCollateral;
 
         acc.usdcSpent += d.usdcSpent;
-
         acc.redeemedUSDC += d.redeemedUSDC;
 
         acc.marketValue       += d.marketValue;
@@ -94,9 +93,9 @@ library SettlementLib {
         uint256 baseAmount,   // tokens
         uint256 quoteAmount   // ppUSDC / USDC
     ) internal {
-        require(payer != address(0), "payer=0");   // still required: payer is the recipient
-        require(payee != address(0), "payee=0");
-        require(baseAmount > 0, "base=0");
+        require(payer != address(0));
+        require(payee != address(0));
+        require(baseAmount > 0);
         // NOTE: quoteAmount may legitimately be 0 for pure position transfers.
 
         StorageLib.Storage storage s = StorageLib.getStorage();
@@ -109,8 +108,9 @@ library SettlementLib {
         AllocateCapitalLib.CapitalDeltas memory payerDeltas;
 
         if (quoteAmount > 0) {
-            payeeDeltas.realFreeCollateralAccount += int256(quoteAmount);
-            payerDeltas.realFreeCollateralAccount -= int256(quoteAmount);
+            int256 q = int256(quoteAmount);
+            payeeDeltas.realFreeCollateralAccount += q;
+            payerDeltas.realFreeCollateralAccount -= q;
         }
 
         // ─────────────────────────────────────────────────────
@@ -185,7 +185,6 @@ library SettlementLib {
         //     BUT: we do *not* want winnings in ppUSDC events.
         // ─────────────────────────────────────────────────────
         int256 payerWinningsInt = 0;
-        int256 payeeWinningsInt = 0;
 
         {
             // Payer winnings
@@ -202,7 +201,6 @@ library SettlementLib {
                 uint256 payeeWinnings = ResolutionLib._applyPendingWinnings(payee);
                 if (payeeWinnings > 0) {
                     int256 w = int256(payeeWinnings);
-                    payeeWinningsInt = w; // not used now, but kept for symmetry/future
                     payeeDeltas.realFreeCollateralAccount += w;
                     payeeDeltas.realTotalFreeCollateral   += w;
                 }
@@ -270,12 +268,37 @@ library SettlementLib {
         }
 
         // ─────────────────────────────────────────────────────
-        // 4) PROJECT ERC20 EVENTS FROM DELTAS (PAYER ONLY)
-        //    - Position ERC20 (this position)
-        //    - ppUSDC mirror (realFreeCollateralAccount *excluding winnings*)
-        //    - Full ledger Settlement event
+        // 4) PROJECT ERC20 EVENTS & Settlement EVENT (PAYER ONLY)
+        //    Moved into a helper to reduce stack depth.
         // ─────────────────────────────────────────────────────
+        _projectEvents(
+            s,
+            payer,
+            payee,
+            marketId,
+            positionId,
+            isBack,
+            baseAmount,
+            quoteAmount,
+            payerDeltas,
+            payerWinningsInt
+        );
+    }
 
+    /// @dev Separate helper so the main function can drop locals
+    ///      before we do ERC20 event projection.
+    function _projectEvents(
+        StorageLib.Storage storage s,
+        address payer,
+        address payee,
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack,
+        uint256 baseAmount,
+        uint256 quoteAmount,
+        AllocateCapitalLib.CapitalDeltas memory payerDeltas,
+        int256  payerWinningsInt
+    ) private {
         // 4a) Position ERC20: createdShares delta for this position (payer only)
         {
             address posToken = s.positionERC20[marketId][positionId];
@@ -287,24 +310,20 @@ library SettlementLib {
                     baseAmount
                 );
 
-                if (csDeltaPayer != 0) {
-                    uint256 amt;
-                    address from;
-                    address to;
-
-                    if (csDeltaPayer > 0) {
-                        // Mint to payer
-                        amt  = uint256(csDeltaPayer);
-                        from = address(0);
-                        to   = payer;
-                    } else {
-                        // Burn from payer
-                        amt  = uint256(-csDeltaPayer);
-                        from = payer;
-                        to   = address(0);
-                    }
-
-                    JNotify(posToken).notifyTransfer(from, to, amt);
+                if (csDeltaPayer > 0) {
+                    // Mint to payer
+                    JNotify(posToken).notifyTransfer(
+                        address(0),
+                        payer,
+                        uint256(csDeltaPayer)
+                    );
+                } else if (csDeltaPayer < 0) {
+                    // Burn from payer
+                    JNotify(posToken).notifyTransfer(
+                        payer,
+                        address(0),
+                        uint256(-csDeltaPayer)
+                    );
                 }
             }
         }
@@ -313,24 +332,20 @@ library SettlementLib {
         //     BUT subtract the winnings part so ERC20 events only show trade I/O.
         {
             int256 fcDelta = payerDeltas.realFreeCollateralAccount - payerWinningsInt;
-            if (fcDelta != 0) {
-                uint256 amt;
-                address from;
-                address to;
-
-                if (fcDelta > 0) {
-                    // Mint ppUSDC to payer
-                    amt  = uint256(fcDelta);
-                    from = address(0);
-                    to   = payer;
-                } else {
-                    // Burn ppUSDC from payer
-                    amt  = uint256(-fcDelta);
-                    from = payer;
-                    to   = address(0);
-                }
-
-                JNotify(address(s.ppUSDC)).notifyTransfer(from, to, amt);
+            if (fcDelta > 0) {
+                // Mint ppUSDC to payer
+                JNotify(address(s.ppUSDC)).notifyTransfer(
+                    address(0),
+                    payer,
+                    uint256(fcDelta)
+                );
+            } else if (fcDelta < 0) {
+                // Burn ppUSDC from payer
+                JNotify(address(s.ppUSDC)).notifyTransfer(
+                    payer,
+                    address(0),
+                    uint256(-fcDelta)
+                );
             }
         }
 

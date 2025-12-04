@@ -13,8 +13,7 @@ library TradeRouterLib {
     /// - `primaryAmount` / `bound` semantics depend on `kind`:
     ///   - BUY_EXACT_TOKENS:  primaryAmount = t,        bound = maxUSDCIn
     ///   - BUY_FOR_USDC:      primaryAmount = usdcIn,   bound = minTokensOut
-    ///   - SELL_EXACT_TOKENS: primaryAmount = t,        bound = minUSDCOut
-    ///   - SELL_FOR_USDC:     primaryAmount = usdcOut,  bound = maxTokensIn
+
     function tradeWithPPUSDC(
         Types.TradeKind kind,
         address          trader,
@@ -80,54 +79,7 @@ library TradeRouterLib {
                 usdcIn
             );
 
-        } else if (kind == Types.TradeKind.SELL_EXACT_TOKENS) {
-            // primaryAmount = t, bound = minUSDCOut
-            uint256 t          = primaryAmount;
-            uint256 minUSDCOut = bound;
-
-            uint256 usdcOut = IMarketMaker(mm).applySellExactTokens(
-                marketId,
-                positionId,
-                isBack,
-                t,
-                minUSDCOut
-            );
-
-            // mm pays usdcOut, receives t tokens from trader
-            SettlementLib.settleWithFlash(
-                mm,      // payer
-                trader,  // payee
-                marketId,
-                positionId,
-                isBack,
-                t,
-                usdcOut
-            );
-
-        } else if (kind == Types.TradeKind.SELL_FOR_USDC) {
-            // primaryAmount = usdcOut, bound = maxTokensIn
-            uint256 usdcOut    = primaryAmount;
-            uint256 maxTokens  = bound;
-
-            uint256 tokensIn = IMarketMaker(mm).applySellForUSDC(
-                marketId,
-                positionId,
-                isBack,
-                usdcOut,
-                maxTokens
-            );
-
-            // mm pays usdcOut, receives tokensIn from trader
-            SettlementLib.settleWithFlash(
-                mm,
-                trader,
-                marketId,
-                positionId,
-                isBack,
-                tokensIn,
-                usdcOut
-            );
-
+        
         } else {
             revert("BAD_KIND");
         }

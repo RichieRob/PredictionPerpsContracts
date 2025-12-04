@@ -26,23 +26,11 @@ library Types {
 
     enum TradeKind {
     BUY_EXACT_TOKENS,
-    BUY_FOR_USDC,
-    SELL_EXACT_TOKENS,
-    SELL_FOR_USDC
+    BUY_FOR_USDC
 }
 
 
-        struct Intent {
-        address trader;
-        uint256 marketId;
-        uint256 positionId;
-        bool    isBack;
-        TradeKind kind;
-        uint256 primaryAmount; // t or usdc depending on kind
-        uint256 bound;         // slippage bound (maxUSDCIn / minTokensOut / etc.)
-        uint256 nonce;
-        uint256 deadline;
-    }
+
 
 
 }

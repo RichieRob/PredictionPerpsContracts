@@ -9,8 +9,6 @@ library AllocateCapitalLib {
         int256 realTotalFreeCollateral;   // Δ realTotalFreeCollateral
 
         int256 usdcSpent;                 // Δ USDCSpent[account][marketId]
-
-
         int256 redeemedUSDC;              // Δ redeemedUSDC[account][marketId]
 
         int256 marketValue;               // Δ marketValue[marketId]
@@ -43,7 +41,7 @@ library AllocateCapitalLib {
     }
 
     // ─────────────────────────────────────────────
-    // NEW: split writers
+    // Split writers (with underflow guards)
     // ─────────────────────────────────────────────
 
     function _applyAccountDeltas(
@@ -57,7 +55,9 @@ library AllocateCapitalLib {
             if (d.realFreeCollateralAccount > 0) {
                 s.realFreeCollateral[account] += uint256(d.realFreeCollateralAccount);
             } else {
-                s.realFreeCollateral[account] -= uint256(-d.realFreeCollateralAccount);
+                uint256 abs = uint256(-d.realFreeCollateralAccount);
+                uint256 cur = s.realFreeCollateral[account];
+                s.realFreeCollateral[account] = cur - abs;
             }
         }
 
@@ -66,7 +66,9 @@ library AllocateCapitalLib {
             if (d.usdcSpent > 0) {
                 s.USDCSpent[account][marketId] += uint256(d.usdcSpent);
             } else {
-                s.USDCSpent[account][marketId] -= uint256(-d.usdcSpent);
+                uint256 abs = uint256(-d.usdcSpent);
+                uint256 cur = s.USDCSpent[account][marketId];
+                s.USDCSpent[account][marketId] = cur - abs;
             }
         }
 
@@ -75,7 +77,9 @@ library AllocateCapitalLib {
             if (d.redeemedUSDC > 0) {
                 s.redeemedUSDC[account][marketId] += uint256(d.redeemedUSDC);
             } else {
-                s.redeemedUSDC[account][marketId] -= uint256(-d.redeemedUSDC);
+                uint256 abs = uint256(-d.redeemedUSDC);
+                uint256 cur = s.redeemedUSDC[account][marketId];
+                s.redeemedUSDC[account][marketId] = cur - abs;
             }
         }
     }
@@ -90,18 +94,20 @@ library AllocateCapitalLib {
             if (d.realTotalFreeCollateral > 0) {
                 s.realTotalFreeCollateral += uint256(d.realTotalFreeCollateral);
             } else {
-                s.realTotalFreeCollateral -= uint256(-d.realTotalFreeCollateral);
+                uint256 abs = uint256(-d.realTotalFreeCollateral);
+                uint256 cur = s.realTotalFreeCollateral;
+                s.realTotalFreeCollateral = cur - abs;
             }
         }
-
-  
 
         // marketValue[marketId]
         if (d.marketValue != 0) {
             if (d.marketValue > 0) {
                 s.marketValue[marketId] += uint256(d.marketValue);
             } else {
-                s.marketValue[marketId] -= uint256(-d.marketValue);
+                uint256 abs = uint256(-d.marketValue);
+                uint256 cur = s.marketValue[marketId];
+                s.marketValue[marketId] = cur - abs;
             }
         }
 
@@ -110,7 +116,9 @@ library AllocateCapitalLib {
             if (d.totalMarketsValue > 0) {
                 s.TotalMarketsValue += uint256(d.totalMarketsValue);
             } else {
-                s.TotalMarketsValue -= uint256(-d.totalMarketsValue);
+                uint256 abs = uint256(-d.totalMarketsValue);
+                uint256 cur = s.TotalMarketsValue;
+                s.TotalMarketsValue = cur - abs;
             }
         }
     }
@@ -125,6 +133,4 @@ library AllocateCapitalLib {
         _applyAccountDeltas(s, account, marketId, d);
         _applyGlobalDeltas(s, marketId, d);
     }
-
-
 }

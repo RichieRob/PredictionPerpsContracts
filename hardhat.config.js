@@ -13,7 +13,7 @@ module.exports = {
       },
       viaIR: false,
       debug: {
-        revertStrings: "strip", // strip revert strings to save size
+       // revertStrings: "strip", // strip revert strings to save size
       },
       metadata: {
         bytecodeHash: "none", // minor size saving

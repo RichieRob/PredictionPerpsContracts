@@ -15,39 +15,29 @@ import "./LedgerLibraries/6_ResolutionLib.sol";
 import "./LedgerLibraries/7_DepositWithdrawLib.sol";
 import "./LedgerLibraries/8_ERC20BridgeLib.sol";
 import "./LedgerLibraries/9_TradeRouterLib.sol";
-//import "./LedgerLibraries/5_LedgerInvariantViews.sol";
-import "./LedgerLibraries/7a_SettlementLib.sol";
+import "./LedgerLibraries/7b_SettlementLib.sol";
+import "./LedgerLibraries/3_HeapLib.sol";
+
+import "./LedgerLibraries/5_LedgerInvariantViews.sol";
 
 struct PositionInfo {
     uint256 positionId;
-    string name;
-    string ticker;
+    bool    isBack; // true = Back mirror, false = Lay mirror
+    string  name;
+    string  ticker;
 }
 
 struct PositionInfoWithBalance {
     uint256 positionId;
-    string name;
-    string ticker;
+    bool    isBack; // true = Back mirror, false = Lay mirror
+    string  name;
+    string  ticker;
     uint256 balance;
 }
-
-// Extended structs with token address and symbol
-
 
 contract Ledger {
     using MarketManagementLib for *;
     using LedgerLib for *;
-
-    // event Deposited(address indexed account, uint256 amount);
-    // event Withdrawn(address indexed account, uint256 amount);
-    // event TiltUpdated(address indexed account, uint256 indexed marketId, uint256 indexed positionId, uint256 freeCollateral, int256 allocatedCapital, int256 newTilt);
-    // event Bought(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensOut, uint256 usdcIn, uint256 recordedUSDC);
-    // event Sold(address indexed account, uint256 indexed marketId, uint256 indexed positionId, bool isBack, uint256 tokensIn, uint256 usdcOut);
-    // event Redeemed(uint256 indexed marketId, uint256 amount);
-    // event MarketMakerRegistered(address indexed mmAddress, address account);
-    // event LiquidityTransferred(address indexed account, address indexed oldAddress, address indexed newAddress);
-    // event DMMAllowed(address indexed account, bool allowed);
-    // event IntentFilled( address indexed relayer, address indexed trader, uint256 indexed marketId, uint256 positionId, Types.TradeKind kind, bool isBack, uint256 primaryAmount, uint256 bound);
 
     modifier onlyOwner() {
         require(msg.sender == StorageLib.getStorage().owner, "Only owner");
@@ -62,11 +52,11 @@ contract Ledger {
         address _ppUSDC
     ) {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        s.owner = msg.sender;
-        s.usdc = IERC20(_usdc);
-        s.aUSDC = IERC20(_aUSDC);
+        s.owner   = msg.sender;
+        s.usdc    = IERC20(_usdc);
+        s.aUSDC   = IERC20(_aUSDC);
         s.aavePool = IAavePool(_aavePool);
-        s.ppUSDC = IERC20(_ppUSDC);
+        s.ppUSDC  = IERC20(_ppUSDC);
     }
 
     // ─────────────────────────────────────────────
@@ -101,10 +91,8 @@ contract Ledger {
         require(filler != address(0), "filler=0");
         require(trader != filler, "self-fill");
 
-        // All price checks, signature checks, partial-fill checks, etc.
-        // are done in the external intent contract.
-        // Ledger just performs the settlement + solvency.
-        SettlementLib.settleWithFlash(
+        // All checks (price, sigs, partial fills) are in the external intent contract.
+        SettlementLib.settle(
             trader,
             filler,
             marketId,
@@ -115,9 +103,9 @@ contract Ledger {
         );
     }
 
-   
-
-    // --- market / position management  ---
+    // ─────────────────────────────────────────────
+    // Market / position management
+    // ─────────────────────────────────────────────
 
     function createMarket(
         string memory name,
@@ -139,6 +127,7 @@ contract Ledger {
         );
     }
 
+    /// @notice Create a single position and its Back/Lay ERC20 mirrors.
     function createPosition(
         uint256 marketId,
         string memory name,
@@ -146,40 +135,53 @@ contract Ledger {
     )
         external
         onlyOwner
-        returns (uint256 positionId, address token)
+        returns (
+            uint256 positionId,
+            address backToken,
+            address layToken
+        )
     {
-        (positionId, token) = MarketManagementLib.createPosition(
+        (positionId, backToken, layToken) = MarketManagementLib.createPosition(
             marketId,
             name,
             ticker
         );
 
-        // Wire the cloned ERC20 to this market/position
-        ERC20BridgeLib.registerBackPositionERC20(token, marketId, positionId);
+        // Wire the cloned ERC20s to this market/position
+        ERC20BridgeLib.registerBackPositionERC20(backToken, marketId, positionId);
+        ERC20BridgeLib.registerLayPositionERC20(layToken,  marketId, positionId);
     }
 
+    /// @notice Batch create positions and their Back/Lay ERC20 mirrors.
     function createPositions(
         uint256 marketId,
         Types.PositionMeta[] memory positions
-    ) external onlyOwner returns (uint256[] memory positionIds) {
+    )
+        external
+        onlyOwner
+        returns (
+            uint256[] memory positionIds,
+            address[] memory backTokens,
+            address[] memory layTokens
+        )
+    {
         require(positions.length > 0, "No positions provided");
 
-        positionIds = new uint256[](positions.length);
-        for (uint256 i = 0; i < positions.length; i++) {
-            (uint256 positionId, address token) = MarketManagementLib
-                .createPosition(
-                    marketId,
-                    positions[i].name,
-                    positions[i].ticker
-                );
+        (positionIds, backTokens, layTokens) =
+            MarketManagementLib.createPositions(marketId, positions);
 
-            // Wire the cloned ERC20 to this market/position
+        // Wire all cloned ERC20s
+        for (uint256 i = 0; i < positionIds.length; i++) {
             ERC20BridgeLib.registerBackPositionERC20(
-                token,
+                backTokens[i],
                 marketId,
-                positionId
+                positionIds[i]
             );
-            positionIds[i] = positionId;
+            ERC20BridgeLib.registerLayPositionERC20(
+                layTokens[i],
+                marketId,
+                positionIds[i]
+            );
         }
     }
 
@@ -189,7 +191,9 @@ contract Ledger {
         DepositWithdrawLib.withdrawInterest(msg.sender);
     }
 
-    // Exposure functions for the ERC20
+    // ─────────────────────────────────────────────
+    // Exposure functions for the ERC20 mirrors
+    // ─────────────────────────────────────────────
 
     function getERC20PositionMeta(address token)
         external
@@ -198,6 +202,7 @@ contract Ledger {
             bool   registered,
             uint256 marketId,
             uint256 positionId,
+            bool   isBack,
             string memory positionName,
             string memory positionTicker,
             string memory marketName,
@@ -208,11 +213,12 @@ contract Ledger {
 
         registered = s.erc20Registered[token];
         if (!registered) {
-            return (false, 0, 0, "", "", "", "");
+            return (false, 0, 0, false, "", "", "", "");
         }
 
         marketId   = s.erc20MarketId[token];
         positionId = s.erc20PositionId[token];
+        isBack     = s.erc20IsBack[token];
 
         positionName   = s.positionNames[marketId][positionId];
         positionTicker = s.positionTickers[marketId][positionId];
@@ -221,12 +227,31 @@ contract Ledger {
         marketTicker = s.marketTickers[marketId];
     }
 
+    /// @notice Back-side ERC20 mirror for a given market/position.
+    function getBackPositionERC20(
+        uint256 marketId,
+        uint256 positionId
+    ) external view returns (address) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        return s.positionBackERC20[marketId][positionId];
+    }
+
+    /// @notice Lay-side ERC20 mirror for a given market/position.
+    function getLayPositionERC20(
+        uint256 marketId,
+        uint256 positionId
+    ) external view returns (address) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        return s.positionLayERC20[marketId][positionId];
+    }
+
+    /// @dev Legacy alias if you still want it; currently returns the Back ERC20.
     function getPositionERC20(
         uint256 marketId,
         uint256 positionId
     ) external view returns (address) {
         StorageLib.Storage storage s = StorageLib.getStorage();
-        return s.positionERC20[marketId][positionId];
+        return s.positionBackERC20[marketId][positionId];
     }
 
     function positionExists(uint256 marketId, uint256 positionId)
@@ -255,6 +280,7 @@ contract Ledger {
         return ERC20BridgeLib.erc20BalanceOf(token, account);
     }
 
+    /// @notice Raw underlying "created shares" view (Back-side semantics).
     function balanceOf(
         uint marketId,
         uint positionId,
@@ -269,7 +295,9 @@ contract Ledger {
         return uint256(avail);
     }
 
-    // --- trading entrypoints using and updating internal ppUSDC ---
+    // ─────────────────────────────────────────────
+    // Trading entrypoints using and updating ppUSDC
+    // ─────────────────────────────────────────────
 
     function buyExactTokens(
         address mm,
@@ -311,7 +339,9 @@ contract Ledger {
         );
     }
 
-    // --- views / misc ---
+    // ─────────────────────────────────────────────
+    // Views / misc
+    // ─────────────────────────────────────────────
 
     function getPositionLiquidity(
         address account,
@@ -414,7 +444,6 @@ contract Ledger {
     function allowDMM(address account, bool allowed) external onlyOwner {
         StorageLib.Storage storage s = StorageLib.getStorage();
         s.allowedDMMs[account] = allowed;
-        // emit DMMAllowed(account, allowed);
     }
 
     // set the ERC20 Implementation
@@ -461,7 +490,6 @@ contract Ledger {
         return ResolutionLib.realFreeCollateral(account);
     }
 
-    // this one is gonna be interesting... need to think about how this updates, currently doesn include any of the unclaimed..
     function realTotalFreeCollateral() external view returns (uint256) {
         return StorageLib.getStorage().realTotalFreeCollateral;
     }
@@ -507,7 +535,6 @@ contract Ledger {
         s.realFreeCollateral[to]   += amount;
     }
 
-    // Deposit and Withdraw USDC
     // -----------------------------------------------------------------------
     // Unified Deposit (Allowance / EIP-2612 / Permit2)
     // -----------------------------------------------------------------------
@@ -528,16 +555,16 @@ contract Ledger {
             mode,
             eipPermit
         );
-
-        // emit Deposited(msg.sender, recorded);
+        recorded; // silence unused var
     }
 
     function withdraw(uint256 amount, address to) external {
         DepositWithdrawLib.withdrawWithClaims(msg.sender, amount, to);
-        // emit Withdrawn(msg.sender, amount);
     }
 
+    // -----------------------------------------------------------------------
     // ERC20 Transfers
+    // -----------------------------------------------------------------------
 
     function transferPosition(
         address to,
@@ -546,12 +573,12 @@ contract Ledger {
         bool    isBack,
         uint256 amount
     ) external {
-        SettlementLib.settleWithFlash(
+        SettlementLib.settle(
             to,          // payer (recipient of the position)
             msg.sender,  // payee (sender of the position)
             marketId,
             positionId,
-            isBack,      // isBack = true for Back mirror ERC20
+            isBack,
             amount,
             0            // quoteAmount: no ppUSDC leg
         );
@@ -570,10 +597,14 @@ contract Ledger {
         );
     }
 
+    // -----------------------------------------------------------------------
     // ERC20 Names
+    // -----------------------------------------------------------------------
 
+    /// @notice Base name for a position (without Back/Lay prefix).
+    ///         Used as the underlying descriptor for both mirrors.
     function erc20Name(uint256 marketId, uint256 positionId)
-        external
+        public
         view
         returns (string memory)
     {
@@ -584,6 +615,8 @@ contract Ledger {
         return string.concat(positionName, " in ", marketName);
     }
 
+    /// @notice Base symbol for a position (without B-/L- prefix).
+    ///         Used as the underlying descriptor for both mirrors.
     function _erc20Symbol(uint256 marketId, uint256 positionId)
         internal
         view
@@ -604,7 +637,38 @@ contract Ledger {
         return _erc20Symbol(marketId, positionId);
     }
 
+    /// @notice Full ERC20 name for a specific side (Back / Lay).
+    /// e.g. "Back YES in Election 2025" / "Lay YES in Election 2025".
+    function erc20NameForSide(
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack
+    ) external view returns (string memory) {
+        string memory base = erc20Name(marketId, positionId);
+        if (isBack) {
+            return string.concat("Back ", base);
+        } else {
+            return string.concat("Lay ", base);
+        }
+    }
+
+    /// @notice Full ERC20 symbol for a specific side (Back / Lay).
+    /// e.g. "B-YES-ELEC25" / "L-YES-ELEC25".
+    function erc20SymbolForSide(
+        uint256 marketId,
+        uint256 positionId,
+        bool    isBack
+    ) external view returns (string memory) {
+        string memory base = _erc20Symbol(marketId, positionId);
+        if (isBack) {
+            return string.concat("B-", base);
+        } else {
+            return string.concat("L-", base);
+        }
+    }
+    // -----------------------------------------------------------------------
     // Resolve
+    // -----------------------------------------------------------------------
 
     function resolveMarket(uint256 marketId) external onlyOwner {
         ResolutionLib.resolveFromOracle(marketId);
@@ -617,75 +681,87 @@ contract Ledger {
     ) external onlyOwner {
         ResolutionLib._resolveMarketCore(marketId, winningPositionId);
     }
+function getMinTiltDelta(address account, uint256 marketId)
+    external
+    view
+    returns (uint256)
+{
+    int256 d = HeapLib._getMinTiltDelta(account, marketId);
+    if (d <= 0) {
+        return 0;
+    }
+    return uint256(d);
+}
 
-    // // EXPOSE LIBRARY FOR TESTS
+  // EXPOSE LIBRARY FOR TESTS
 
-    // function invariant_marketAccounting(uint256 marketId)
-    //     external
-    //     view
-    //     returns (uint256 lhs, uint256 rhs)
-    // {
-    //     return LedgerInvariantViews.marketAccounting(marketId);
-    // }
+    function invariant_marketAccounting(uint256 marketId)
+        external
+        view
+        returns (uint256 lhs, uint256 rhs)
+    {
+        return LedgerInvariantViews.marketAccounting(marketId);
+    }
 
-    // function invariant_iscWithinLine(uint256 marketId)
-    //     external
-    //     view
-    //     returns (uint256 used, uint256 line)
-    // {
-    //     StorageLib.Storage storage s = StorageLib.getStorage();
-    //     used = LedgerInvariantViews.iscSpent(marketId);
-    //     line = s.syntheticCollateral[marketId];
-    // }
+    function invariant_iscWithinLine(uint256 marketId)
+        external
+        view
+        returns (uint256 used, uint256 line)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        used = LedgerInvariantViews.iscSpent(marketId);
+        line = s.syntheticCollateral[marketId];
+    }
 
-    // function invariant_effectiveMin(address account, uint256 marketId)
-    //     external
-    //     view
-    //     returns (int256 effMin)
-    // {
-    //     return LedgerInvariantViews.effectiveMinShares(account, marketId);
-    // }
+    function invariant_effectiveMin(address account, uint256 marketId)
+        external
+        view
+        returns (int256 effMin)
+    {
+        return LedgerInvariantViews.effectiveMinShares(account, marketId);
+    }
 
-    // function invariant_systemFunding(uint256 marketId)
-    //     external
-    //     view
-    //     returns (uint256 fullSetsSystem)
-    // {
-    //     return LedgerInvariantViews.totalFullSets(marketId);
-    // }
+    function invariant_systemFunding(uint256 marketId)
+        external
+        view
+        returns (uint256 fullSetsSystem)
+    {
+        return LedgerInvariantViews.totalFullSets(marketId);
+    }
 
-    // function invariant_tvl()
-    //     external
-    //     view
-    //     returns (uint256 tvl, uint256 aUSDCBalance)
-    // {
-    //     return LedgerInvariantViews.tvlAccounting();
-    // }
+    function invariant_tvl()
+        external
+        view
+        returns (uint256 tvl, uint256 aUSDCBalance)
+    {
+        return LedgerInvariantViews.tvlAccounting();
+    }
 
-    // function invariant_systemBalance()
-    //     external
-    //     view
-    //     returns (uint256 lhs, uint256 rhs)
-    // {
-    //     return LedgerInvariantViews.systemBalance();
-    // }
+    function invariant_systemBalance()
+        external
+        view
+        returns (uint256 lhs, uint256 rhs)
+    {
+        return LedgerInvariantViews.systemBalance();
+    }
 
-    // function invariant_checkSolvencyAllMarkets(address account)
-    //     external
-    //     view
-    //     returns (bool ok)
-    // {
-    //     return LedgerInvariantViews.checkSolvencyAllMarkets(account);
-    // }
+    function invariant_checkSolvencyAllMarkets(address account)
+        external
+        view
+        returns (bool ok)
+    {
+        return LedgerInvariantViews.checkSolvencyAllMarkets(account);
+    }
 
-    // function invariant_redeemabilityState(
-    //     address account,
-    //     uint256 marketId
-    // )
-    //     external
-    //     view
-    //     returns (int256 netAlloc, int256 redeemable, int256 margin)
-    // {
-    //     return LedgerInvariantViews.redeemabilityState(account, marketId);
-    // }
+    function invariant_redeemabilityState(
+        address account,
+        uint256 marketId
+    )
+        external
+        view
+        returns (int256 netAlloc, int256 redeemable, int256 margin)
+    {
+        return LedgerInvariantViews.redeemabilityState(account, marketId);
+    }
+
 }

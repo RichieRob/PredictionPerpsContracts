@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./7a_SettlementLib.sol";
+import "./7b_SettlementLib.sol";
 import "./2_MarketManagementLib.sol";
 import "./0_Types.sol";
 import "../Interfaces/IMarketMaker.sol";
@@ -45,7 +45,7 @@ library TradeRouterLib {
             );
 
             // trader pays usdcIn, receives t tokens from mm
-            SettlementLib.settleWithFlash(
+            SettlementLib.settle(
                 trader, // payer
                 mm,     // payee
                 marketId,
@@ -69,7 +69,7 @@ library TradeRouterLib {
             );
 
             // trader pays usdcIn, receives tokensOut from mm
-            SettlementLib.settleWithFlash(
+            SettlementLib.settle(
                 trader,
                 mm,
                 marketId,

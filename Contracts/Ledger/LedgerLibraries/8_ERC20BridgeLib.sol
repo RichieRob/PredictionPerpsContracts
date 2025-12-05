@@ -2,21 +2,31 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./7a_SettlementLib.sol";
+import "./7b_SettlementLib.sol";
 import "./2_MarketManagementLib.sol";
-import "./5_LedgerLib.sol";  
+import "./5_LedgerLib.sol";
+import "./3_HeapLib.sol";
 
+/// @title ERC20BridgeLib
+/// @notice Bridges between ledger state and the PositionERC20 clones
+///         for both Back and Lay mirrors.
 library ERC20BridgeLib {
     event PositionERC20Registered(
         address indexed token,
         uint256 indexed marketId,
-        uint256 indexed positionId
+        uint256 indexed positionId,
+        bool    isBack
     );
 
-    function registerBackPositionERC20(
+    // -------------------------------------------------------------
+    // REGISTER (BACK / LAY)
+    // -------------------------------------------------------------
+
+    function _registerPositionERC20(
         address token,
         uint256 marketId,
-        uint256 positionId
+        uint256 positionId,
+        bool    isBack
     ) internal {
         require(token != address(0), "ERC20BridgeLib: token=0");
         require(
@@ -31,12 +41,38 @@ library ERC20BridgeLib {
         s.erc20Registered[token] = true;
         s.erc20MarketId[token]   = marketId;
         s.erc20PositionId[token] = positionId;
-        s.positionERC20[marketId][positionId] = token;
+        s.erc20IsBack[token]     = isBack;
 
-        emit PositionERC20Registered(token, marketId, positionId);
+        if (isBack) {
+            s.positionBackERC20[marketId][positionId] = token;
+        } else {
+            s.positionLayERC20[marketId][positionId] = token;
+        }
+
+        emit PositionERC20Registered(token, marketId, positionId, isBack);
     }
 
-        function erc20PositionTransfer(
+    function registerBackPositionERC20(
+        address token,
+        uint256 marketId,
+        uint256 positionId
+    ) internal {
+        _registerPositionERC20(token, marketId, positionId, true);
+    }
+
+    function registerLayPositionERC20(
+        address token,
+        uint256 marketId,
+        uint256 positionId
+    ) internal {
+        _registerPositionERC20(token, marketId, positionId, false);
+    }
+
+    // -------------------------------------------------------------
+    // TRANSFER VIA ERC20 MIRRORS
+    // -------------------------------------------------------------
+
+    function erc20PositionTransfer(
         address token,
         address from,
         address to,
@@ -53,85 +89,108 @@ library ERC20BridgeLib {
 
         uint256 marketId   = s.erc20MarketId[token];
         uint256 positionId = s.erc20PositionId[token];
-
-        require(
-            MarketManagementLib.positionExists(marketId, positionId),
-            "ERC20BridgeLib: position gone"
-        );
+        bool    isBack     = s.erc20IsBack[token];
 
         // Use unified settlement path:
-        // - BACK position by design for ERC20 mirror
+        // - isBack = true for Back mirror ERC20, false for Lay mirror ERC20
         // - quoteAmount = 0 for a pure position transfer
-        SettlementLib.settleWithFlash(
+        SettlementLib.ERC20Settle(
             to,          // payer (recipient of the position)
             from,        // payee (sender of the position)
             marketId,
             positionId,
-            true,        // isBack = true for Back mirror ERC20
+            isBack,
             amount,
             0            // quoteAmount: no ppUSDC leg
         );
     }
 
+    // -------------------------------------------------------------
+    // META
+    // -------------------------------------------------------------
 
     function getERC20PositionMeta(address token)
         internal
         view
-        returns (uint256 marketId, uint256 positionId, bool registered)
+        returns (
+            uint256 marketId,
+            uint256 positionId,
+            bool    registered,
+            bool    isBack
+        )
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
         registered = s.erc20Registered[token];
         marketId   = s.erc20MarketId[token];
         positionId = s.erc20PositionId[token];
+        isBack     = s.erc20IsBack[token];
     }
 
     // ============================================
-    // NEW: totalSupply / balanceOf for ERC20 views
+    // ERC20 totalSupply / balanceOf VIEWS
     // ============================================
 
-    /// @notice ERC20 totalSupply for any Back-position mirror:
+    /// @notice ERC20 totalSupply for a position mirror:
     ///         marketValue[marketId] + syntheticCollateral[marketId].
-    ///         Same for all positions in this market.
+    ///         Same for Back and Lay in this simple model.
     function erc20TotalSupply(address token) internal view returns (uint256) {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
         uint256 marketId = s.erc20MarketId[token];
 
+        // After resolution, mirrors report 0 supply.
         if (s.marketResolved[marketId]) {
-        return 0;
+            return 0;
         }
 
         uint256 mv  = s.marketValue[marketId];
-        uint256 isc = s.syntheticCollateral[marketId]; // full ISC line - its always 0 for resolving markets
+        uint256 isc = s.syntheticCollateral[marketId]; // full ISC line (0 for resolving markets)
 
         return mv + isc;
     }
 
-    /// @notice ERC20 balanceOf as "available shares" for a Back position,
-    ///         clamped at 0. Includes ISC for the DMM automatically.
+    /// @notice ERC20 balanceOf:
+    ///         - Back: "available shares" on that outcome, clamped at 0.
+    ///           Includes ISC for the DMM automatically via getCreatedShares.
+    ///         - Lay: only the minTilt position for the account has a
+    ///           non-zero balance, equal to getMinTiltDelta(account, marketId).
 function erc20BalanceOf(address token, address account)
-    internal
-    view
-    returns (uint256)
-{
-    StorageLib.Storage storage s = StorageLib.getStorage();
-    require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
+        internal
+        view
+        returns (uint256)
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
 
-    uint256 marketId   = s.erc20MarketId[token];
-    uint256 positionId = s.erc20PositionId[token];
+        uint256 marketId   = s.erc20MarketId[token];
+        uint256 positionId = s.erc20PositionId[token];
+        bool    isBack     = s.erc20IsBack[token];
 
-    // 🔒 After resolution, ERC20 views for this market should show zero.
-    if (s.marketResolved[marketId]) {
-        return 0;
+        if (s.marketResolved[marketId]) {
+            return 0;
+        }
+
+        if (isBack) {
+            // BACK MIRROR
+            int256 avail = LedgerLib.getCreatedShares(
+                account,
+                marketId,
+                positionId
+            );
+            if (avail <= 0) return 0;
+            return uint256(avail);
+        } else {
+            // LAY MIRROR
+            (, uint256 minPosId) = LedgerLib.getMinTilt(account, marketId);
+            if (minPosId != positionId) {
+                return 0;
+            }
+
+            int256 delta = HeapLib._getMinTiltDelta(account, marketId);
+            if (delta <= 0) return 0;
+            return uint256(delta);
+        }
     }
-
-    // ISC balance included in getFullCapacityShares for DMM
-    int256 avail = LedgerLib.getCreatedShares(account, marketId, positionId);
-
-    if (avail <= 0) return 0;
-    return uint256(avail);
 }
 
-
-}

@@ -405,4 +405,165 @@ library HeapLib {
         (, uint256 minId) = getMinTilt(account, marketId);
         return minId;
     }
+/// @dev Helper to compute the second min in the min block, handling duplicates.
+    function _computeBlockSecondMin(
+        StorageLib.Storage storage s,
+        address account,
+        uint256 marketId,
+        uint256 minBlockId,
+        int256 minVal
+    ) private view returns (int256) {
+        int256 blockSecondVal = type(int256).max;
+
+        uint256 start = minBlockId * Types.BLOCK_SIZE;
+        uint256 len = s.marketPositions[marketId].length;
+        uint256 endExclusive = start + Types.BLOCK_SIZE;
+        if (endExclusive > len) {
+            endExclusive = len;
+        }
+
+        // Only scan if block has at least 2 positions
+        if (endExclusive - start < 2) {
+            return blockSecondVal;
+        }
+
+        // Track count of positions with exact minVal (for duplicates)
+        uint256 count_min = 0;
+
+        // Scan the block to find second min, skipping/excluding the known minVal instances
+        for (uint256 i = start; i < endExclusive; i++) {
+            uint256 k = s.marketPositions[marketId][i];
+            int256 v = s.tilt[account][marketId][k];
+
+            if (v == minVal) {
+                count_min++;
+            } else if (v < blockSecondVal) {
+                blockSecondVal = v;
+            }
+        }
+
+        // If multiple positions share the minVal, second min is also minVal
+        if (count_min >= 2) {
+            blockSecondVal = minVal;
+        } else if (blockSecondVal == type(int256).max) {
+            // No non-min values found: no second in block
+        }
+        // else: blockSecondVal is the smallest non-min value in the block
+
+        return blockSecondVal;
+    }
+
+  
+       /// @notice Computes the delta between the global minimum tilt and the global second minimum tilt
+    ///         for a given account and market. In expanding markets we also treat the implicit
+    ///         "otherBucket" with tilt 0 as another candidate for min / second-min.
+    ///         Returns 0 if no second min exists (after all candidates) or after clamping.
+    function _getMinTiltDelta(
+        address account,
+        uint256 marketId
+    ) internal view returns (int256) {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        uint256[] storage heap = s.minTopHeap[account][marketId];
+        if (heap.length == 0) {
+            // No positions or heap entries: delta is 0
+            return 0;
+        }
+
+        // Fetch the global min from the heap root
+        uint256 minBlockId = heap[0];
+        Types.BlockData storage b =
+            s.minBlockData[account][marketId][minBlockId];
+        int256 minVal = b.val;
+
+        // Compute block second min using helper to reduce stack depth
+        int256 blockSecondVal = _computeBlockSecondMin(
+            s,
+            account,
+            marketId,
+            minBlockId,
+            minVal
+        );
+
+        // Find the smallest val among the direct children in the heap (potential next mins)
+        int256 otherMin = type(int256).max;
+        for (uint256 i = 1; i <= 4; i++) {
+            uint256 childIdx = i;
+            if (childIdx >= heap.length) break;
+            uint256 childBlock = heap[childIdx];
+            int256 childVal = _getBlockVal(
+                s,
+                account,
+                marketId,
+                childBlock,
+                HeapType.MIN
+            );
+            if (childVal < otherMin) {
+                otherMin = childVal;
+            }
+        }
+
+        // Determine global second min from blockSecondVal and child blocks
+        int256 secondVal = type(int256).max;
+        if (blockSecondVal != type(int256).max) {
+            secondVal = blockSecondVal;
+        }
+        if (
+            otherMin != type(int256).max &&
+            (otherMin < secondVal || secondVal == type(int256).max)
+        ) {
+            secondVal = otherMin;
+        }
+
+        bool isExpanding = s.isExpanding[marketId];
+
+        // In NON-expanding markets, if we still have no second min, we're done.
+        if (!isExpanding && secondVal == type(int256).max) {
+            return 0;
+        }
+
+        // ─────────────────────────────────────
+        // Expanding markets: fold in "otherBucket" with tilt 0
+        // ─────────────────────────────────────
+        if (isExpanding) {
+            int256 otherTilt = 0; // implicit bucket
+
+            if (otherTilt < minVal) {
+                // otherTilt becomes new global min; old min becomes candidate second
+                if (secondVal == type(int256).max || minVal < secondVal) {
+                    secondVal = minVal;
+                }
+                minVal = otherTilt;
+            } else if (otherTilt > minVal) {
+                // otherTilt is above current min; may become second
+                if (otherTilt < secondVal) {
+                    secondVal = otherTilt;
+                }
+            } else {
+                // otherTilt == minVal → at least two entries at the minimum
+                if (secondVal == type(int256).max || secondVal > minVal) {
+                    secondVal = minVal;
+                }
+            }
+        }
+
+        // If after considering all candidates we still have no second min, delta is 0
+        if (secondVal == type(int256).max) {
+            return 0;
+        }
+
+        // Apply clamping for expanding markets
+        if (isExpanding && minVal > 0) {
+            minVal = 0;
+        }
+        if (isExpanding && secondVal > 0) {
+            secondVal = 0;
+        }
+
+        // Delta is always non-negative since secondVal >= minVal
+        return secondVal - minVal;
+    }
+
+
+
+
 }

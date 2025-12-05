@@ -193,9 +193,12 @@ mapping(uint256 => mapping(uint256 => string)) positionTickers; // marketId => p
 mapping(address => bool)    erc20Registered;  // token => has mapping
 mapping(address => uint256) erc20MarketId;    // token => marketId
 mapping(address => uint256) erc20PositionId;  // token => positionId
+mapping(address => bool)    erc20IsBack; // true = Back mirror, false = Lay mirror
+
 
 // 🔁 reverse lookup: (marketId, positionId) -> back-position ERC20 token
-mapping(uint256 => mapping(uint256 => address)) positionERC20; 
+mapping(uint256 => mapping(uint256 => address)) positionBackERC20;
+mapping(uint256 => mapping(uint256 => address)) positionLayERC20;
 // marketId => positionId => token
 
 

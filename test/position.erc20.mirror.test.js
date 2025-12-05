@@ -16,7 +16,7 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
   });
 
   /// Helper: create a market with ISC seeded to `owner` as DMM,
-  /// and one Back position with an ERC20 mirror.
+  /// and one Back/Lay position with ERC20 mirrors. We test the Back token.
   async function setupISCSeededPosition() {
     const { ledger, owner } = fx;
 
@@ -33,31 +33,39 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
       iscAmount,
       false,
       ethers.ZeroAddress,
-      "0x"    );
+      "0x"
+    );
 
     const markets = await ledger.getMarkets();
     expect(markets.length).to.equal(1);
     const marketId = markets[0];
 
-    // create one position (Back) with ERC20 mirror via staticCall
-    const [positionId, tokenAddr] = await ledger.createPosition.staticCall(
-      marketId,
-      "Outcome A",
-      "OA"
-    );
+    // create one position with Back & Lay ERC20 mirrors via staticCall
+    const [positionId, backTokenAddr, layTokenAddr] =
+      await ledger.createPosition.staticCall(
+        marketId,
+        "Outcome A",
+        "OA"
+      );
+
     await ledger.createPosition(marketId, "Outcome A", "OA");
 
-    const positionToken = await ethers.getContractAt(
-      "PositionERC20",
-      tokenAddr
-    );
-
-    return { marketId, positionId, positionToken, iscAmount };
+    return {
+      marketId,
+      positionId,
+      backTokenAddr,
+      layTokenAddr,
+      iscAmount,
+    };
   }
 
   it("seeds DMM balances from syntheticCollateral for each PositionERC20", async function () {
-    const { marketId, positionId, positionToken, iscAmount } =
-      await setupISCSeededPosition();
+    const {
+      marketId,
+      positionId,
+      backTokenAddr,
+      iscAmount,
+    } = await setupISCSeededPosition();
 
     const { ledger, owner, trader } = fx;
 
@@ -73,18 +81,32 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
     expect(pName).to.equal("Outcome A");
     expect(pTicker).to.equal("OA");
 
-    // ERC20 meta from PositionERC20 -> ledger
-    const name = await positionToken.name();
-    const symbol = await positionToken.symbol();
-    expect(name).to.equal("Outcome A in ISC Seeded Market");
-    expect(symbol).to.equal("OA-ISM");
+    // ERC20 meta via ledger helpers (Back side)
+    const erc20Name = await ledger.erc20NameForSide(
+      marketId,
+      positionId,
+      true // isBack
+    );
+    const erc20Symbol = await ledger.erc20SymbolForSide(
+      marketId,
+      positionId,
+      true // isBack
+    );
+
+    expect(erc20Name).to.equal("Back Outcome A in ISC Seeded Market");
+    expect(erc20Symbol).to.equal("B-OA-ISM");
 
     // --- Core ISC mirror assertions ---
 
-    const supply = await positionToken.totalSupply();
-    const ownerBal = await positionToken.balanceOf(owner.address);
+    const positionToken = await ethers.getContractAt(
+      "PositionERC20",
+      backTokenAddr
+    );
+
+    const supply    = await positionToken.totalSupply();
+    const ownerBal  = await positionToken.balanceOf(owner.address);
     const traderBal = await positionToken.balanceOf(trader.address);
-    const otherBal = await positionToken.balanceOf(other.address);
+    const otherBal  = await positionToken.balanceOf(other.address);
 
     // totalSupply = ISC line (no real capital yet)
     const mv = await ledger.getMarketValue(marketId);
@@ -98,13 +120,22 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
   });
 
   it("PositionERC20 transfers move balances but keep totalSupply constant", async function () {
-    const { positionToken, iscAmount } = await setupISCSeededPosition();
+    const {
+      backTokenAddr,
+      iscAmount,
+    } = await setupISCSeededPosition();
+
     const { owner, trader } = fx;
+
+    const positionToken = await ethers.getContractAt(
+      "PositionERC20",
+      backTokenAddr
+    );
 
     const transferAmount = iscAmount / 4n; // 25% of ISC line
 
     const supplyBefore = await positionToken.totalSupply();
-    const ownerBefore = await positionToken.balanceOf(owner.address);
+    const ownerBefore  = await positionToken.balanceOf(owner.address);
     const traderBefore = await positionToken.balanceOf(trader.address);
 
     expect(supplyBefore).to.equal(iscAmount);
@@ -116,9 +147,9 @@ describe("PositionERC20 mirrors + ISC seeding", function () {
       .connect(owner)
       .transfer(trader.address, transferAmount);
 
-    const supplyAfter = await positionToken.totalSupply();
-    const ownerAfter = await positionToken.balanceOf(owner.address);
-    const traderAfter = await positionToken.balanceOf(trader.address);
+    const supplyAfter  = await positionToken.totalSupply();
+    const ownerAfter   = await positionToken.balanceOf(owner.address);
+    const traderAfter  = await positionToken.balanceOf(trader.address);
 
     // totalSupply is derived from ledger (mv + isc), so unchanged
     expect(supplyAfter).to.equal(iscAmount);

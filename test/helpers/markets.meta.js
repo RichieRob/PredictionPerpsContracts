@@ -24,7 +24,8 @@ async function createMarketWithDetails(fx, {
     iscAmount,
     false,             // doesResolve
     ethers.ZeroAddress,
-    "0x"  );
+    "0x"
+  );
   await tx.wait();
 
   const markets = await ledger.getMarkets();
@@ -74,8 +75,8 @@ async function expectPositionsBatchMetaForMarket(fx, {
 }
 
 /**
- * Creates positions one-by-one using staticCall to discover (positionId, token),
- * then checks:
+ * Creates positions one-by-one using staticCall to discover
+ * (positionId, backToken, layToken), then checks for the Back mirror:
  *  - getERC20PositionMeta wiring
  *  - erc20Name / erc20Symbol
  *  - totalSupply == 0, balances == 0 for owner + trader
@@ -91,16 +92,17 @@ async function expectPositionsStaticMetaAndZeroBalances(fx, {
   const created = [];
 
   for (const t of teams) {
-    const [positionId, token] = await ledger.createPosition.staticCall(
-      marketId,
-      t.name,
-      t.ticker
-    );
+    const [positionId, backToken, layToken] =
+      await ledger.createPosition.staticCall(
+        marketId,
+        t.name,
+        t.ticker
+      );
 
     const tx = await ledger.createPosition(marketId, t.name, t.ticker);
     await tx.wait();
 
-    created.push({ positionId, token, ...t });
+    created.push({ positionId, backToken, layToken, ...t });
   }
 
   // Sanity: market positions list matches count
@@ -108,28 +110,30 @@ async function expectPositionsStaticMetaAndZeroBalances(fx, {
   expect(positionIds.length).to.equal(teams.length);
 
   for (let i = 0; i < created.length; i++) {
-    const { positionId, token, name, ticker } = created[i];
+    const { positionId, backToken, name, ticker } = created[i];
 
-    // 1) ERC20PositionMeta wiring
+    // 1) ERC20PositionMeta wiring (Back mirror)
     const [
       registered,
       mId,
       pId,
+      isBack,
       posName,
       posTicker,
       mName,
       mTicker,
-    ] = await ledger.getERC20PositionMeta(token);
+    ] = await ledger.getERC20PositionMeta(backToken);
 
     expect(registered).to.equal(true);
     expect(mId).to.equal(marketId);
     expect(pId).to.equal(positionId);
+    expect(isBack).to.equal(true); // we’re checking the Back token here
     expect(posName).to.equal(name);
     expect(posTicker).to.equal(ticker);
     expect(mName).to.equal(marketName);
     expect(mTicker).to.equal(marketTicker);
 
-    // 2) name / symbol helpers
+    // 2) name / symbol helpers (base, side-agnostic)
     const erc20Name   = await ledger.erc20Name(marketId, positionId);
     const erc20Symbol = await ledger.erc20Symbol(marketId, positionId);
 
@@ -137,9 +141,9 @@ async function expectPositionsStaticMetaAndZeroBalances(fx, {
     expect(erc20Symbol).to.equal(`${ticker}-${marketTicker}`);
 
     // 3) supply / balances (no trades yet)
-    const totalSupply = await ledger.erc20TotalSupply(token);
-    const ownerBal    = await ledger.erc20BalanceOf(token, owner.address);
-    const traderBal   = await ledger.erc20BalanceOf(token, trader.address);
+    const totalSupply = await ledger.erc20TotalSupply(backToken);
+    const ownerBal    = await ledger.erc20BalanceOf(backToken, owner.address);
+    const traderBal   = await ledger.erc20BalanceOf(backToken, trader.address);
 
     expect(totalSupply).to.equal(0n);
     expect(ownerBal).to.equal(0n);

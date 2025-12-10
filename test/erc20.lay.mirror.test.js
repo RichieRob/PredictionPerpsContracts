@@ -181,8 +181,12 @@ describe("Lay PositionERC20 mirrors – single-position expanding market", funct
       ISC,      // synthetic collateral (ISC)
       false,    // non-resolving; expanding by default
       ethers.ZeroAddress,
-      "0x"
-    );
+    "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
 
     const markets = await ledger.getMarkets();
     const singleMarketId = markets[markets.length - 1];

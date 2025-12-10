@@ -55,8 +55,12 @@ describe("MarketMakerLedger – resolving vs non-resolving trade gas (25 positio
         iscAmountNonRes,      // ISC line
         false,                // doesResolve = false
         ethers.ZeroAddress,   // oracle
-        "0x"                  // oracleParams
-      );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
       await tx.wait();
     }
 
@@ -120,8 +124,12 @@ describe("MarketMakerLedger – resolving vs non-resolving trade gas (25 positio
         0n,                   // no ISC
         true,                 // doesResolve = true
         oracleAddr,           // oracle required
-        "0x"
-      );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
       await tx.wait();
     }
 
@@ -323,8 +331,12 @@ describe("MarketMakerLedger – resolving vs non-resolving trade gas (25 positio
         iscAmountNonRes,    // synthetic line
         false,              // doesResolve = false
         ethers.ZeroAddress, // oracle
-        "0x"
-      );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
       await tx.wait();
     }
   

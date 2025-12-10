@@ -1,4 +1,3 @@
-// test/helpers/markets.multiuser.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { usdc, deployCore, mintAndDeposit } = require("./core");
@@ -10,7 +9,7 @@ const { usdc, deployCore, mintAndDeposit } = require("./core");
 async function setupMultiUserTwoPositionFixture() {
   // fx: { owner, trader, feeRecipient, other, usdc, aUSDC, aavePool, ppUSDC, ledger }
   const fx = await deployCore();
-  const { ledger, trader, other } = fx;
+  const { ledger, trader, other, owner } = fx;
 
   fx.alice = trader;
   fx.bob   = other;
@@ -22,35 +21,44 @@ async function setupMultiUserTwoPositionFixture() {
   fx.flatMM = await FlatMockMarketMaker.deploy();
   await fx.flatMM.waitForDeployment();
 
-  await ledger.allowDMM(await fx.flatMM.getAddress(), true);
+  const flatAddr = await fx.flatMM.getAddress();
+  await ledger.connect(owner).allowDMM(flatAddr, true);
 
   // Market with ISC
   const ISC = usdc("100000");
-  await ledger.createMarket(
-    "Multi-User Test Market",
-    "MUTI",
-    await fx.flatMM.getAddress(),
-    ISC,
-    false,
-    ethers.ZeroAddress,
-    "0x"  );
+  await ledger
+    .connect(owner)
+    .createMarket(
+      "Multi-User Test Market",
+      "MUTI",
+      flatAddr,
+      ISC,
+      false,
+      ethers.ZeroAddress,
+      "0x",
+      0,             // feeBps
+      owner.address, // marketCreator
+      [],            // feeWhitelistAccounts
+      false          // hasWhitelist
+    );
+
   const markets = await ledger.getMarkets();
   fx.marketId = markets[0];
 
   // 2 positions (A/B), using staticCall so ERC20s are registered & we know tokens
-  const [posA_, tokenA_] = await ledger.createPosition.staticCall(
+  const [posA_, tokenA_] = await ledger.connect(owner).createPosition.staticCall(
     fx.marketId,
     "Team A",
     "A"
   );
-  await ledger.createPosition(fx.marketId, "Team A", "A");
+  await ledger.connect(owner).createPosition(fx.marketId, "Team A", "A");
 
-  const [posB_, tokenB_] = await ledger.createPosition.staticCall(
+  const [posB_, tokenB_] = await ledger.connect(owner).createPosition.staticCall(
     fx.marketId,
     "Team B",
     "B"
   );
-  await ledger.createPosition(fx.marketId, "Team B", "B");
+  await ledger.connect(owner).createPosition(fx.marketId, "Team B", "B");
 
   fx.posA   = posA_;
   fx.tokenA = tokenA_;

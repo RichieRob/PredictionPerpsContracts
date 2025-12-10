@@ -27,8 +27,12 @@ describe("Market ERC20 discovery + metadata print", function () {
       0,              // iscAmount
       false,          // doesResolve
       ethers.ZeroAddress,
-      "0x"
-    );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
     await tx.wait();
 
     const markets = await ledger.getMarkets();

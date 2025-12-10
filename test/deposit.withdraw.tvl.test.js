@@ -4,8 +4,7 @@ const {
   setupDepositFixture,
   depositAndCheckFlat,
   withdrawAndCheckFlat,
-  expectFeeDepositState,
-  expectDepositBelowMinReverts,
+  // removed: expectFeeDepositState, expectDepositBelowMinReverts
   expectWithdrawTooMuchReverts,
   expectWithdrawToZeroReverts,
   scenarioMultiDepositWithdrawKeepsTvlEqABal,
@@ -31,21 +30,8 @@ describe("MarketMakerLedger — deposits, withdrawals & TVL", function () {
     });
   });
 
-  describe("protocol fee on deposit", function () {
-    it("skims aUSDC fee and credits only net amount to TVL & freeCollateral", async function () {
-      await expectFeeDepositState(fx, {
-        amount: usdc("1000"),
-        bps: 100, // 1%
-      });
-    });
-
-    it("reverts if recordedAmount < minUSDCDeposited", async function () {
-      await expectDepositBelowMinReverts(fx, {
-        amount: usdc("100"),
-        bps: 1000, // 10%
-      });
-    });
-  });
+  // Old "protocol fee on deposit" tests removed – fees are now HWM on markets,
+  // not skims on deposit, so those scenarios no longer apply.
 
   describe("withdraw constraints", function () {
     it("reverts when withdrawing more than freeCollateral", async function () {

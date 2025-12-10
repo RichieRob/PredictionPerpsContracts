@@ -3,111 +3,143 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
+async function deployWithLogs(name, factory, signer, args = []) {
+  console.log(`\n──────── Deploying ${name} ────────`);
+
+  const deployTxReq = await factory.getDeployTransaction(...args);
+  console.log(`${name} deploy tx request:`, {
+    to: deployTxReq.to,
+    from: deployTxReq.from,
+    dataLength: deployTxReq.data ? deployTxReq.data.length : 0,
+    value: deployTxReq.value ? deployTxReq.value.toString() : "0",
+  });
+
+  const txResponse = await signer.sendTransaction(deployTxReq);
+  console.log(`${name} tx hash:`, txResponse.hash);
+
+  const receipt = await txResponse.wait();
+  console.log(`✅ ${name} deployed at:`, receipt.contractAddress);
+  console.log(`${name} gasUsed:`, receipt.gasUsed.toString());
+
+  return factory.attach(receipt.contractAddress);
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deploying core contracts with account:", deployer.address);
+
+  const balance = await ethers.provider.getBalance(deployer.address);
+  console.log("Deployer ETH balance:", ethers.formatEther(balance), "ETH");
 
   // Check network
   const network = await ethers.provider.getNetwork();
   const chainId = network.chainId;
   console.log(`Deploying on network: ${network.name} (chainId: ${chainId})`);
 
-  // Sanity check provider again
   const block = await ethers.provider.getBlockNumber();
   console.log("Provider OK, current block:", block.toString());
 
   // ─────────────── Deploy mocks ───────────────
-  console.log("Getting MockUSDC factory...");
   const MockUSDC = await ethers.getContractFactory("MockUSDC");
-  console.log("Deploying MockUSDC...");
-  const mockUSDC = await MockUSDC.deploy();
-  await mockUSDC.waitForDeployment();
-  console.log("✅ MockUSDC deployed to:", mockUSDC.target);
+  const mockUSDC = await deployWithLogs("MockUSDC", MockUSDC, deployer);
 
-  console.log("Getting MockAUSDC factory...");
   const MockAUSDC = await ethers.getContractFactory("MockAUSDC");
-  console.log("Deploying MockAUSDC...");
-  const mockAUSDC = await MockAUSDC.deploy();
-  await mockAUSDC.waitForDeployment();
-  console.log("✅ MockAUSDC deployed to:", mockAUSDC.target);
+  const mockAUSDC = await deployWithLogs("MockAUSDC", MockAUSDC, deployer);
 
-  console.log("Getting MockAavePool factory...");
   const MockAavePool = await ethers.getContractFactory("MockAavePool");
-  console.log("Deploying MockAavePool...");
-  const mockAavePool = await MockAavePool.deploy(
-    mockUSDC.target,
-    mockAUSDC.target
+  const mockAavePool = await deployWithLogs(
+    "MockAavePool",
+    MockAavePool,
+    deployer,
+    [mockUSDC.target, mockAUSDC.target]
   );
-  await mockAavePool.waitForDeployment();
-  console.log("✅ MockAavePool deployed to:", mockAavePool.target);
 
-  console.log("Getting PpUSDC factory...");
   const PpUSDC = await ethers.getContractFactory("PpUSDC");
-  console.log("Deploying PpUSDC...");
-  const ppUSDC = await PpUSDC.deploy();
-  await ppUSDC.waitForDeployment();
-  console.log("✅ PpUSDC deployed to:", ppUSDC.target);
+  const ppUSDC = await deployWithLogs("PpUSDC", PpUSDC, deployer);
 
   const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
-  // ─────────────── Deploy Ledger ───────────────
-  console.log("Getting Ledger factory...");
-  const Ledger = await ethers.getContractFactory("Ledger");
-
-  console.log("Deploying Ledger...");
-  const ledger = await Ledger.deploy(
-    mockUSDC.target,
-    mockAUSDC.target,
-    mockAavePool.target,
-    PERMIT2_ADDRESS,
-    ppUSDC.target
+  // ─────────────── Deploy libraries ───────────────
+  const DepositWithdrawLibFactory = await ethers.getContractFactory("DepositWithdrawLib");
+  const depositWithdrawLib = await deployWithLogs(
+    "DepositWithdrawLib",
+    DepositWithdrawLibFactory,
+    deployer
   );
-  console.log("Ledger deployment tx hash:", ledger.deploymentTransaction().hash);
-  await ledger.waitForDeployment();
-  console.log("✅ Ledger deployed to:", ledger.target);
+
+  const SettlementLibFactory = await ethers.getContractFactory("SettlementLib");
+  const settlementLib = await deployWithLogs(
+    "SettlementLib",
+    SettlementLibFactory,
+    deployer
+  );
+
+  // ─────────────── Deploy Ledger (linked) ───────────────
+  console.log("\nGetting Ledger factory (with linked libraries)...");
+  const LedgerFactory = await ethers.getContractFactory("Ledger", {
+    libraries: {
+      DepositWithdrawLib: depositWithdrawLib.target,
+      SettlementLib:      settlementLib.target,
+    },
+  });
+
+  const ledger = await deployWithLogs(
+    "Ledger",
+    LedgerFactory,
+    deployer,
+    [
+      mockUSDC.target,
+      mockAUSDC.target,
+      mockAavePool.target,
+      PERMIT2_ADDRESS,
+      ppUSDC.target,
+    ]
+  );
 
   console.log("Setting PpUSDC ledger...");
-  await ppUSDC.setLedger(ledger.target);
+  const setLedgerTx = await ppUSDC.setLedger(ledger.target);
+  console.log("setLedger tx hash:", setLedgerTx.hash);
+  await setLedgerTx.wait();
   console.log("✅ Set PpUSDC ledger");
 
   // ─────────────── Deploy PositionERC20 ───────────────
-  console.log("Getting PositionERC20 factory...");
-  const PositionERC20 = await ethers.getContractFactory("PositionERC20");
-  console.log("Deploying PositionERC20...");
-  const positionImpl = await PositionERC20.deploy(ledger.target);
-  await positionImpl.waitForDeployment();
-  console.log("✅ PositionERC20 deployed to:", positionImpl.target);
+  const PositionERC20Factory = await ethers.getContractFactory("PositionERC20");
+  const positionImpl = await deployWithLogs(
+    "PositionERC20",
+    PositionERC20Factory,
+    deployer,
+    [ledger.target]
+  );
 
   console.log("Setting PositionERC20 implementation...");
-  await ledger.setPositionERC20Implementation(positionImpl.target);
+  const setImplTx = await ledger.setPositionERC20Implementation(positionImpl.target);
+  console.log("setPositionERC20Implementation tx hash:", setImplTx.hash);
+  await setImplTx.wait();
   console.log("✅ Set PositionERC20 implementation");
 
   // ─────────────── Deploy IntentContract ───────────────
-  console.log("Getting IntentContract factory...");
-  const IntentContract = await ethers.getContractFactory("IntentContract");
-
-  console.log("Deploying IntentContract...");
-  // ⚠️ If your constructor takes more args, adjust here.
-  const intentContract = await IntentContract.deploy(ledger.target);
-  await intentContract.waitForDeployment();
-  console.log("✅ IntentContract deployed to:", intentContract.target);
+  const IntentContractFactory = await ethers.getContractFactory("IntentContract");
+  const intentContract = await deployWithLogs(
+    "IntentContract",
+    IntentContractFactory,
+    deployer,
+    [ledger.target]
+  );
 
   console.log("Allowing IntentContract on Ledger...");
-  const intentTx = await ledger.setIntentContract(
-    intentContract.target,
-    true
-  );
+  const intentTx = await ledger.setIntentContract(intentContract.target, true);
+  console.log("setIntentContract tx hash:", intentTx.hash);
   await intentTx.wait();
   console.log("✅ IntentContract allowlisted on Ledger");
 
   // ─────────────── Deploy LedgerViews ───────────────
-  console.log("Getting LedgerViews factory...");
-  const LedgerViews = await ethers.getContractFactory("LedgerViews");
-
-  console.log("Deploying LedgerViews...");
-  const ledgerViews = await LedgerViews.deploy(ledger.target);
-  await ledgerViews.waitForDeployment();
-  console.log("✅ LedgerViews deployed to:", ledgerViews.target);
+  const LedgerViewsFactory = await ethers.getContractFactory("LedgerViews");
+  const ledgerViews = await deployWithLogs(
+    "LedgerViews",
+    LedgerViewsFactory,
+    deployer,
+    [ledger.target]
+  );
 
   // ─────────────── Save deployments.json ───────────────
   const deployments = {
@@ -121,11 +153,13 @@ async function main() {
     PositionERC20: positionImpl.target,
     IntentContract: intentContract.target,
     LedgerViews: ledgerViews.target,
+    DepositWithdrawLib: depositWithdrawLib.target,
+    SettlementLib: settlementLib.target,
     Permit2: PERMIT2_ADDRESS,
   };
 
   const filePath = path.join(__dirname, "../deployments.json");
-  console.log("Writing deployments file to:", filePath);
+  console.log("\nWriting deployments file to:", filePath);
 
   let existingData = {};
   if (fs.existsSync(filePath)) {

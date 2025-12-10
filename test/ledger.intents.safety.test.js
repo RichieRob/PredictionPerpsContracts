@@ -56,7 +56,12 @@ describe("MarketMakerLedger – intent safety (cancel, expiry, bad sig)", functi
       0n,
       false,
       ethers.ZeroAddress,
-      "0x"    );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
 
     const markets = await fx.ledger.getMarkets();
     marketId = markets[0];

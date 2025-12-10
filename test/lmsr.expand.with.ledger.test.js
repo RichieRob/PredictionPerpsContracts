@@ -26,14 +26,21 @@ describe("LMSR + MarketMakerLedger – expansion from reserve", () => {
 
     // 3) Create market with ISC line so DMM uses synthetic capital, no real deposit
     const iscAmount = usdc("100000"); // 100k synthetic
-    await ledger.createMarket(
-      "LMSR Expansion Market",
-      "LMSREXP",
-      await amm.getAddress(),
-      iscAmount,
-      false,               // doesResolve
-      ethers.ZeroAddress,  // oracle
-      "0x"    );
+    await ledger
+      .connect(owner)
+      .createMarket(
+        "LMSR Expansion Market",
+        "LMSREXP",
+        await amm.getAddress(),
+        iscAmount,
+        false,               // doesResolve
+        ethers.ZeroAddress,  // oracle
+        "0x",                // oracleParams
+        0,                   // feeBps
+        owner.address,       // marketCreator
+        [],                  // feeWhitelistAccounts
+        false                // hasWhitelist
+      );
 
     const markets = await ledger.getMarkets();
     marketId = markets[0];
@@ -42,17 +49,17 @@ describe("LMSR + MarketMakerLedger – expansion from reserve", () => {
     //    A, B will be initial; C only becomes tradable after splitFromReserve.
     let tx, receipt;
 
-    tx = await ledger.createPosition(marketId, "Outcome A", "A");
+    tx = await ledger.connect(owner).createPosition(marketId, "Outcome A", "A");
     receipt = await tx.wait();
     const [posAId] = await ledger.getMarketPositions(marketId);
     posA = posAId;
 
-    tx = await ledger.createPosition(marketId, "Outcome B", "B");
+    tx = await ledger.connect(owner).createPosition(marketId, "Outcome B", "B");
     receipt = await tx.wait();
     const posIdsAfterB = await ledger.getMarketPositions(marketId);
     posB = posIdsAfterB[1];
 
-    tx = await ledger.createPosition(marketId, "Outcome C", "C");
+    tx = await ledger.connect(owner).createPosition(marketId, "Outcome C", "C");
     receipt = await tx.wait();
     const posIdsAfterC = await ledger.getMarketPositions(marketId);
     posC = posIdsAfterC[2];

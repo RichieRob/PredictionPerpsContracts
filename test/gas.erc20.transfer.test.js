@@ -39,8 +39,12 @@ describe("Gas – ERC20 transfers (PositionERC20 + ppUSDC)", function () {
         iscAmount,
         false,          // non-resolving
         ethers.ZeroAddress,
-        "0x"
-      );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
 
       const allMarketIds = await ledger.getMarkets();
       const marketId = allMarketIds[allMarketIds.length - 1];

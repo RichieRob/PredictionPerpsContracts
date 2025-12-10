@@ -1,4 +1,3 @@
-// test/helpers/markets.multi.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { usdc, deployCore, mintAndDeposit } = require("./core");
@@ -10,7 +9,7 @@ const { usdc, deployCore, mintAndDeposit } = require("./core");
 async function setupMultiMarketFixture() {
   // fx: { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger }
   const fx = await deployCore();
-  const { ledger } = fx;
+  const { ledger, owner } = fx;
 
   // Flat DMM
   const FlatMockMarketMaker = await ethers.getContractFactory(
@@ -19,30 +18,45 @@ async function setupMultiMarketFixture() {
   fx.flatMM = await FlatMockMarketMaker.deploy();
   await fx.flatMM.waitForDeployment();
 
-  await ledger.allowDMM(await fx.flatMM.getAddress(), true);
+  const flatAddr = await fx.flatMM.getAddress();
+  await ledger.connect(owner).allowDMM(flatAddr, true);
 
   const ISC_LINE_1 = usdc("100000");
   const ISC_LINE_2 = usdc("50000");
 
   // Market 1
-  await ledger.createMarket(
-    "MultiMarket One",
-    "MM1",
-    await fx.flatMM.getAddress(),
-    ISC_LINE_1,
-    false,
-    ethers.ZeroAddress,
-    "0x"  );
+  await ledger
+    .connect(owner)
+    .createMarket(
+      "MultiMarket One",
+      "MM1",
+      flatAddr,
+      ISC_LINE_1,
+      false,              // doesResolve
+      ethers.ZeroAddress, // oracle
+      "0x",               // oracleParams
+      0,                  // feeBps
+      owner.address,      // marketCreator
+      [],                 // feeWhitelistAccounts
+      false               // hasWhitelist
+    );
 
   // Market 2
-  await ledger.createMarket(
-    "MultiMarket Two",
-    "MM2",
-    await fx.flatMM.getAddress(),
-    ISC_LINE_2,
-    false,
-    ethers.ZeroAddress,
-    "0x"  );
+  await ledger
+    .connect(owner)
+    .createMarket(
+      "MultiMarket Two",
+      "MM2",
+      flatAddr,
+      ISC_LINE_2,
+      false,
+      ethers.ZeroAddress,
+      "0x",
+      0,
+      owner.address,
+      [],
+      false
+    );
 
   const markets = await ledger.getMarkets();
   expect(markets.length).to.equal(2);
@@ -52,12 +66,12 @@ async function setupMultiMarketFixture() {
 
   // YES in each market
   const posMeta1 = [{ name: "YES-1", ticker: "Y1" }];
-  await (await ledger.createPositions(fx.marketId1, posMeta1)).wait();
+  await (await ledger.connect(owner).createPositions(fx.marketId1, posMeta1)).wait();
   const posIds1 = await ledger.getMarketPositions(fx.marketId1);
   fx.positionId1 = posIds1[0];
 
   const posMeta2 = [{ name: "YES-2", ticker: "Y2" }];
-  await (await ledger.createPositions(fx.marketId2, posMeta2)).wait();
+  await (await ledger.connect(owner).createPositions(fx.marketId2, posMeta2)).wait();
   const posIds2 = await ledger.getMarketPositions(fx.marketId2);
   fx.positionId2 = posIds2[0];
 

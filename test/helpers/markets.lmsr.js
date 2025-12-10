@@ -1,4 +1,3 @@
-// test/helpers/markets.lmsr.js
 const { ethers } = require("hardhat");
 const { usdc } = require("./core");
 
@@ -37,7 +36,7 @@ async function addPositionsViaListing({ owner, lmsr, marketId, posIds, priorR })
  *   - name
  *   - ticker
  *   - nPositions
- *   - smallMarket (bool)
+ *   - smallMarket (bool)   // currently passed only into LMSR logic, not ledger
  *   - iscAmount (default 100_000 USDC)
  *   - liabilityUSDC (default 1_000 USDC)
  *   - maxInitPositions (optional override of MAX_INIT_POSITIONS)
@@ -53,7 +52,7 @@ async function createLmsrMarket(fx, opts = {}) {
     name = "Extra Market",
     ticker = "EXTRA",
     nPositions = 2,
-    smallMarket = false,
+    smallMarket = false,           // kept for future LMSR use
     iscAmount = U(100_000),
     liabilityUSDC = U(1_000),
     maxInitPositions = MAX_INIT_POSITIONS,
@@ -61,16 +60,25 @@ async function createLmsrMarket(fx, opts = {}) {
 
   const lmsrAddr = await lmsr.getAddress();
 
-  // 1) create market
-  await ledger.createMarket(
-    name,
-    ticker,
-    lmsrAddr,
-    iscAmount,
-    false,               // doesResolve
-    ethers.ZeroAddress,  // oracle
-    "0x"         // smallMarket flag
-  );
+  // Allow LMSR as a DMM
+  await ledger.connect(owner).allowDMM(lmsrAddr, true);
+
+  // 1) create market (non-resolving LMSR market, no oracle, no fees)
+  await ledger
+    .connect(owner)
+    .createMarket(
+      name,
+      ticker,
+      lmsrAddr,
+      iscAmount,
+      false,               // doesResolve
+      ethers.ZeroAddress,  // oracle
+      "0x",                // oracleParams (we're not wiring smallMarket via oracle params here)
+      0,                   // feeBps
+      owner.address,       // marketCreator
+      [],                  // feeWhitelistAccounts
+      false                // hasWhitelist
+    );
 
   const markets = await ledger.getMarkets();
   const marketId = markets[markets.length - 1];
@@ -79,7 +87,7 @@ async function createLmsrMarket(fx, opts = {}) {
   const allPosIds = [];
   for (let i = 0; i < nPositions; i++) {
     const label = `P${i}`;
-    await ledger.createPosition(marketId, label, label);
+    await ledger.connect(owner).createPosition(marketId, label, label);
   }
   const created = await ledger.getMarketPositions(marketId);
   for (const p of created) allPosIds.push(p);
@@ -103,7 +111,7 @@ async function createLmsrMarket(fx, opts = {}) {
       priors,
       liabilityUSDC,
       0,     // reserve0
-      false
+      smallMarket
     );
 
   // 4) If we have more positions than we could safely init, list them now

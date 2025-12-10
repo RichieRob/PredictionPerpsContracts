@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./3_AllocateCapitalLib.sol";
+import "./7_AllocateCapitalLib.sol";
 import "./4_SolvencyLib.sol";
 import "./7_PositionTransferLib.sol";
 import "./6_ResolutionLib.sol";
@@ -144,31 +144,7 @@ library SettlementAccountingLib {
             }
         }
 
-        // ─────────────────────────────────────────────────
-        // 3b) Resolution: claim pending winnings for both
-        // ─────────────────────────────────────────────────
-        {
-            // Payer winnings
-            uint256 payerWinnings =
-                ResolutionLib._applyPendingWinnings(p.payer);
-            if (payerWinnings > 0) {
-                int256 w = int256(payerWinnings);
-                payerWinningsInt = w; // track separately
-                payerDeltas.realFreeCollateralAccount += w;
-                payerDeltas.realTotalFreeCollateral   += w;
-            }
-
-            // Payee winnings (avoid double-claim if same address)
-            if (p.payee != p.payer) {
-                uint256 payeeWinnings =
-                    ResolutionLib._applyPendingWinnings(p.payee);
-                if (payeeWinnings > 0) {
-                    int256 w2 = int256(payeeWinnings);
-                    payeeDeltas.realFreeCollateralAccount += w2;
-                    payeeDeltas.realTotalFreeCollateral   += w2;
-                }
-            }
-        }
+        
 
         // ─────────────────────────────────────────────────
         // 4) APPLY DELTAS

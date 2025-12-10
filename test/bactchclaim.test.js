@@ -20,19 +20,24 @@ describe("MarketMakerLedger – batchClaimWinnings", () => {
 
     // Resolving market → dmm = ZeroAddress
     await fx.ledger.createMarket(
-      "Batch Claim Election",
-      "BCE",
-      ethers.ZeroAddress,   // 👈 no DMM for resolving markets
-      0,                    // no ISC
-      true,                 // doesResolve = true
-      fx.owner.address,     // dummy oracle address
-      "0x"    );
+      "Batch Claim Election",     // name
+      "BCE",                      // ticker
+      ethers.ZeroAddress,         // dmm (no DMM)
+      0,                          // iscAmount
+      true,                       // doesResolve
+      fx.owner.address,           // oracle (dummy)
+      "0x",                       // oracleParams (empty bytes)
+      0,                          // feeBps
+      fx.owner.address,           // marketCreator
+      [],                         // feeWhitelistAccounts
+      false                       // hasWhitelist
+    );
 
     marketId = (await fx.ledger.getMarkets())[0];
 
     // Two positions: A (winner), B (loser)
     await fx.ledger.createPosition(marketId, "Alice", "A");
-    await fx.ledger.createPosition(marketId, "Bob",   "B");
+    await fx.ledger.createPosition(marketId, "Bob", "B");
     const P = await fx.ledger.getMarketPositions(marketId);
     posA = P[0];
 
@@ -74,8 +79,10 @@ describe("MarketMakerLedger – batchClaimWinnings", () => {
     const realBefore = await fx.ledger.realFreeCollateral(trader);
     const effBefore  = await fx.ledger.effectiveFreeCollateral(trader);
 
-    // Main call under test
-    await fx.ledger.batchClaimWinnings(trader, [marketId]);
+    // Main call under test – trader claims their own winnings
+    await fx.ledger
+      .connect(fx.trader)
+      .batchClaimWinnings(trader, [marketId]);
 
     const realAfter = await fx.ledger.realFreeCollateral(trader);
     const effAfter  = await fx.ledger.effectiveFreeCollateral(trader);

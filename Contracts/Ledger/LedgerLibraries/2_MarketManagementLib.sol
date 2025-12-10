@@ -3,19 +3,19 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 import "./0_Types.sol";
+import "./2_FeeLib.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
 /// @title MarketManagementLib
-/// @notice Deploys markets & creates *two* ERC20 position tokens per outcome:
-///         - Back ERC20 mirror
-///         - Lay ERC20 mirror
+/// @notice Handles:
+///         - creating markets (including fee config)
+///         - creating Back/Lay ERC20 mirrors per position
+///         - locking markets from further expansion
 ///
 /// NOTE: This library ONLY clones ERC20 implementations. It does NOT register
 ///       them. Ledger must call:
 ///          ERC20BridgeLib.registerBackPositionERC20(...)
 ///          ERC20BridgeLib.registerLayPositionERC20(...)
-///
-/// This keeps ERC20s dumb and all logic inside Ledger.
 library MarketManagementLib {
     using Clones for address;
 
@@ -32,45 +32,77 @@ library MarketManagementLib {
     event MarketLocked(uint256 indexed marketId);
 
     // -------------------------------------------------------------
-    //  CREATE MARKET
+    //  CREATE MARKET (full: metadata + ISC + fees)
     // -------------------------------------------------------------
+    /// @notice Full market creation. Permissionless; caller of the Ledger
+    ///         decides who the `marketCreator` is (can be msg.sender or
+    ///         some other address).
+    ///
+    /// @dev This:
+    ///      - allocates a marketId
+    ///      - stores name / ticker / oracle / ISC / DMM
+    ///      - sets the market as expanding (positions can be added)
+    ///      - initialises FeesConfig, including `creator`
     function createMarket(
         string memory name,
         string memory ticker,
         address dmm,
         uint256 iscAmount,
-        bool doesResolve,
+        bool    doesResolve,
         address oracle,
-        bytes calldata oracleParams
+        bytes   calldata oracleParams,
+        uint16  feeBps,
+        address marketCreator,
+        address[] memory feeWhitelistAccounts,
+        bool    hasWhitelist
     ) internal returns (uint256 marketId) {
         StorageLib.Storage storage s = StorageLib.getStorage();
 
-        if (doesResolve) {
-            require(dmm == address(0), "Resolving cannot use DMM");
-            require(iscAmount == 0, "Resolving cannot mint ISC");
-            require(oracle != address(0), "Resolving requires oracle");
-        } else {
-            require(s.allowedDMMs[dmm], "DMM not allowed");
-            require(oracle == address(0), "Non-resolving cannot have oracle");
-            require(oracleParams.length == 0, "Oracle params must be empty");
-        }
-
-        marketId = s.nextMarketId++;
+        // Assign new market id
+        marketId = s.allMarkets.length;
         s.allMarkets.push(marketId);
 
+        // Basic metadata
         s.marketNames[marketId]   = name;
         s.marketTickers[marketId] = ticker;
 
-        s.marketToDMM[marketId]       = dmm;
+        // DMM / synthetic collateral
+        s.marketToDMM[marketId]         = dmm;
         s.syntheticCollateral[marketId] = iscAmount;
-        s.doesResolve[marketId]       = doesResolve;
-        s.marketOracle[marketId]      = oracle;
+
+        // Resolution config
+        s.doesResolve[marketId]        = doesResolve;
+        s.marketOracle[marketId]       = oracle;
         s.marketOracleParams[marketId] = oracleParams;
 
+        // Market starts in "expanding" mode so positions can be added
         s.isExpanding[marketId] = true;
 
+        // Initialise fee config + creator + optional whitelist
+        FeeLib.initMarketFees(
+            marketId,
+            feeBps,
+            marketCreator,
+            feeWhitelistAccounts,
+            dmm,
+            hasWhitelist
+        );
+
         emit MarketCreated(marketId, name, ticker);
-        emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
+
+        // Informational: synthetic line for DMM, if any
+        if (iscAmount > 0 && dmm != address(0)) {
+            emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
+        }
+    }
+
+    // -------------------------------------------------------------
+    //  INTERNAL GUARD: only market creator
+    // -------------------------------------------------------------
+    function _onlyMarketCreator(StorageLib.Storage storage s, uint256 marketId) private view {
+        address creator = s.feesConfig[marketId].creator;
+        require(creator != address(0), "Market: no creator");
+        require(msg.sender == creator, "Market: not creator");
     }
 
     // -------------------------------------------------------------
@@ -89,6 +121,10 @@ library MarketManagementLib {
         )
     {
         StorageLib.Storage storage s = StorageLib.getStorage();
+
+        // Only the market creator can add positions
+        _onlyMarketCreator(s, marketId);
+
         require(s.isExpanding[marketId], "Market locked");
 
         positionId = s.nextPositionId[marketId]++;
@@ -100,7 +136,7 @@ library MarketManagementLib {
         address impl = s.positionERC20Implementation;
         require(impl != address(0), "ERC20 impl missing");
 
-        // TWO clones here
+        // TWO clones here: Back + Lay mirrors
         backToken = impl.clone();
         layToken  = impl.clone();
 
@@ -152,6 +188,10 @@ library MarketManagementLib {
     // -------------------------------------------------------------
     function lockMarketPositions(uint256 marketId) internal {
         StorageLib.Storage storage s = StorageLib.getStorage();
+
+        // Only the market creator can lock
+        _onlyMarketCreator(s, marketId);
+
         require(s.isExpanding[marketId], "Already locked");
         s.isExpanding[marketId] = false;
         emit MarketLocked(marketId);

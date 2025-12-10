@@ -52,8 +52,12 @@ describe("MarketMakerLedger – partial fills for BUY_FOR_USDC intents", functio
       0n,
       false,
       ethers.ZeroAddress,
-      "0x"
-    );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
 
     const markets = await fx.ledger.getMarkets();
     marketId = markets[0];

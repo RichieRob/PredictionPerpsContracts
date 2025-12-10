@@ -21,6 +21,7 @@ async function deployCore() {
   const [owner, trader, feeRecipient, other, ...rest] =
     await ethers.getSigners();
 
+  // Mocks
   const MockUSDC = await ethers.getContractFactory("MockUSDC");
   const usdcToken = await MockUSDC.deploy();
   await usdcToken.waitForDeployment();
@@ -40,7 +41,26 @@ async function deployCore() {
   const ppUSDC = await PpUSDC.deploy();
   await ppUSDC.waitForDeployment();
 
-  const Ledger = await ethers.getContractFactory("Ledger");
+  // 🔹 Deploy DepositWithdrawLib
+  const DepositWithdrawLib = await ethers.getContractFactory("DepositWithdrawLib");
+  const depositWithdrawLib = await DepositWithdrawLib.deploy();
+  await depositWithdrawLib.waitForDeployment();
+  const depositWithdrawLibAddress = await depositWithdrawLib.getAddress();
+
+  // 🔹 Deploy SettlementLib
+  const SettlementLib = await ethers.getContractFactory("SettlementLib");
+  const settlementLib = await SettlementLib.deploy();
+  await settlementLib.waitForDeployment();
+  const settlementLibAddress = await settlementLib.getAddress();
+
+  // Ledger (linked with DepositWithdrawLib + SettlementLib)
+  const Ledger = await ethers.getContractFactory("Ledger", {
+    libraries: {
+      DepositWithdrawLib: depositWithdrawLibAddress,
+      SettlementLib:      settlementLibAddress,
+    },
+  });
+
   const ledger = await Ledger.deploy(
     await usdcToken.getAddress(),
     await aUSDC.getAddress(),
@@ -61,7 +81,7 @@ async function deployCore() {
     .connect(owner)
     .setPositionERC20Implementation(await positionImpl.getAddress());
 
-  // 🔹 NEW: Deploy IntentContract and register it on the ledger
+  // IntentContract and allowlist it
   const IntentContract = await ethers.getContractFactory("IntentContract");
   const intentContract = await IntentContract.deploy(
     await ledger.getAddress()

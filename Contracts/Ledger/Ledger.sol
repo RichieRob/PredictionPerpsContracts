@@ -8,7 +8,6 @@ import "./LedgerLibraries/0_TypesPermit.sol";
 
 import "./LedgerLibraries/1_StorageLib.sol";
 import "./LedgerLibraries/2_MarketManagementLib.sol";
-import "./LedgerLibraries/2_ProtocolFeeLib.sol";
 
 import "./LedgerLibraries/5_LedgerLib.sol";
 import "./LedgerLibraries/6_ResolutionLib.sol";
@@ -19,6 +18,11 @@ import "./LedgerLibraries/7b_SettlementLib.sol";
 import "./LedgerLibraries/3_HeapLib.sol";
 
 import "./LedgerLibraries/5_LedgerInvariantViews.sol";
+
+import "./LedgerLibraries/2_FeeLib.sol";
+import "./LedgerLibraries/6_ClaimsLib.sol";
+
+import "./LedgerLibraries/8_PpUSDCBridgeLib.sol";
 
 struct PositionInfo {
     uint256 positionId;
@@ -107,25 +111,36 @@ contract Ledger {
     // Market / position management
     // ─────────────────────────────────────────────
 
-    function createMarket(
-        string memory name,
-        string memory ticker,
-        address dmm,
-        uint256 iscAmount,
-        bool doesResolve,
-        address oracle,
-        bytes calldata oracleParams
-    ) external onlyOwner returns (uint256 marketId) {
-        marketId = MarketManagementLib.createMarket(
-            name,
-            ticker,
-            dmm,
-            iscAmount,
-            doesResolve,
-            oracle,
-            oracleParams
-        );
-    }
+function createMarket(
+    string memory name,
+    string memory ticker,
+    address dmm,
+    uint256 iscAmount,
+    bool    doesResolve,
+    address oracle,
+    bytes   calldata oracleParams,
+    uint16  feeBps,
+    address marketCreator,
+    address[] calldata feeWhitelistAccounts,
+    bool hasWhitelist // true = whitelist enabled, false = no whitelist forever
+) external returns (uint256 marketId) {
+    // NOTE: anyone can call this; you decide who `marketCreator` is.
+    // Often you'd pass `marketCreator = msg.sender`, but it's flexible.
+    marketId = MarketManagementLib.createMarket(
+        name,
+        ticker,
+        dmm,
+        iscAmount,
+        doesResolve,
+        oracle,
+        oracleParams,
+        feeBps,
+        marketCreator,
+        feeWhitelistAccounts,
+        hasWhitelist
+    );
+}
+
 
     /// @notice Create a single position and its Back/Lay ERC20 mirrors.
     function createPosition(
@@ -134,7 +149,7 @@ contract Ledger {
         string memory ticker
     )
         external
-        onlyOwner
+        
         returns (
             uint256 positionId,
             address backToken,
@@ -185,11 +200,36 @@ contract Ledger {
         }
     }
 
+ function lockMarketPositions(uint256 marketId) external {
+    MarketManagementLib.lockMarketPositions(marketId);
+}
+
+    /*//////////////////////////////////////////////////////////////
+                         HWM Fee Whitelist
+    //////////////////////////////////////////////////////////////*/
+
+    function setFeeWhitelist(
+        uint256 marketId,
+        address account,
+        bool isFree
+    ) external {
+        // Access control is inside FeeLib: requires msg.sender == creator
+        // (and/or owner, depending on which version you keep).
+        FeeLib.setFeeWhitelist(marketId, account, isFree);
+    }
+
+
     // --- owner finance ops ---
 
     function withdrawInterest() external onlyOwner {
         DepositWithdrawLib.withdrawInterest(msg.sender);
     }
+
+
+    function setNewMarketProtocolFeeShareBps(uint16 bps) external onlyOwner {
+        FeeLib.setNewMarketProtocolFeeShareBps(bps);
+    }
+
 
     // ─────────────────────────────────────────────
     // Exposure functions for the ERC20 mirrors
@@ -461,16 +501,7 @@ contract Ledger {
         s.positionERC20Implementation = impl;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                               Turn on/off fees
-    //////////////////////////////////////////////////////////////*/
 
-    function setFeeConfig(address recipient, uint16 bps, bool enabled)
-        external
-        onlyOwner
-    {
-        ProtocolFeeLib.setFeeConfig(recipient, bps, enabled);
-    }
 
     // ppUSDC views
 
@@ -479,7 +510,7 @@ contract Ledger {
         view
         returns (uint256)
     {
-        return ResolutionLib.effectiveFreeCollateral(account);
+        return PpUSDCBridgeLib.effectiveFreeCollateral(account);
     }
 
     function realFreeCollateral(address account)
@@ -487,28 +518,15 @@ contract Ledger {
         view
         returns (uint256)
     {
-        return ResolutionLib.realFreeCollateral(account);
+        return PpUSDCBridgeLib.realFreeCollateral(account);
     }
 
     function realTotalFreeCollateral() external view returns (uint256) {
         return StorageLib.getStorage().realTotalFreeCollateral;
     }
 
-    function claimAllPendingWinnings() external {
-        uint256 winnings = ResolutionLib._applyPendingWinnings(msg.sender);
-        if (winnings == 0) return;
 
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        s.realFreeCollateral[msg.sender] += winnings;
-        s.realTotalFreeCollateral        += winnings;
-    }
-
-    function batchClaimWinnings(
-        address account,
-        uint256[] calldata marketIds
-    ) external {
-        ResolutionLib._batchClaimWinnings(account, marketIds);
-    }
+   
 
     function ppUSDCTransfer(
         address from,
@@ -517,22 +535,8 @@ contract Ledger {
     ) external {
         StorageLib.Storage storage s = StorageLib.getStorage();
         require(msg.sender == address(s.ppUSDC), "Only ppUSDC");
-        require(to != address(0), "to=0");
 
-        // 1) Realise any pending winnings for `from`
-        uint256 winnings = ResolutionLib._applyPendingWinnings(from);
-        if (winnings > 0) {
-            s.realFreeCollateral[from] += winnings;
-            s.realTotalFreeCollateral  += winnings;
-        }
-
-        // 2) Move ppUSDC / freeCollateral from -> to
-        require(
-            s.realFreeCollateral[from] >= amount,
-            "Insufficient ppUSDC"
-        );
-        s.realFreeCollateral[from] -= amount;
-        s.realFreeCollateral[to]   += amount;
+        PpUSDCBridgeLib.ppUSDCTransfer(from, to, amount);
     }
 
     // -----------------------------------------------------------------------
@@ -561,6 +565,12 @@ contract Ledger {
     function withdraw(uint256 amount, address to) external {
         DepositWithdrawLib.withdrawWithClaims(msg.sender, amount, to);
     }
+
+function batchClaimWinnings(address user, uint256[] calldata marketIds) external {
+    ClaimsLib.batchPullAndCredit(user, marketIds);
+}
+
+
 
     // -----------------------------------------------------------------------
     // ERC20 Transfers
@@ -666,6 +676,7 @@ contract Ledger {
             return string.concat("L-", base);
         }
     }
+
     // -----------------------------------------------------------------------
     // Resolve
     // -----------------------------------------------------------------------
@@ -681,19 +692,20 @@ contract Ledger {
     ) external onlyOwner {
         ResolutionLib._resolveMarketCore(marketId, winningPositionId);
     }
-function getMinTiltDelta(address account, uint256 marketId)
-    external
-    view
-    returns (uint256)
-{
-    int256 d = HeapLib._getMinTiltDelta(account, marketId);
-    if (d <= 0) {
-        return 0;
-    }
-    return uint256(d);
-}
 
-  // EXPOSE LIBRARY FOR TESTS
+    function getMinTiltDelta(address account, uint256 marketId)
+        external
+        view
+        returns (uint256)
+    {
+        int256 d = HeapLib._getMinTiltDelta(account, marketId);
+        if (d <= 0) {
+            return 0;
+        }
+        return uint256(d);
+    }
+
+    //   // EXPOSE LIBRARY FOR TESTS
 
     function invariant_marketAccounting(uint256 marketId)
         external
@@ -763,5 +775,4 @@ function getMinTiltDelta(address account, uint256 marketId)
     {
         return LedgerInvariantViews.redeemabilityState(account, marketId);
     }
-
 }

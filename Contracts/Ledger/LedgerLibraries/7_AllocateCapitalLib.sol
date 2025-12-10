@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
+import "./6_ClaimsLib.sol";
 
 library AllocateCapitalLib {
     struct CapitalDeltas {
@@ -50,18 +51,30 @@ library AllocateCapitalLib {
         uint256 marketId,
         CapitalDeltas memory d
     ) internal {
-        // realFreeCollateral[account]
+        // ─────────────────────────────────────────────
+        // realFreeCollateral[account] (ppUSDC line)
+        // ─────────────────────────────────────────────
         if (d.realFreeCollateralAccount != 0) {
             if (d.realFreeCollateralAccount > 0) {
+                // Optional hygiene even on credits
+                ClaimsLib.ensureFreeCollateralFor(account, 0);
                 s.realFreeCollateral[account] += uint256(d.realFreeCollateralAccount);
             } else {
                 uint256 abs = uint256(-d.realFreeCollateralAccount);
+
+                // Centralised “ensure + auto-claim” helper
+                ClaimsLib.ensureFreeCollateralFor(account, abs);
+
+                // Reload and enforce
                 uint256 cur = s.realFreeCollateral[account];
+                require(cur >= abs, "Insufficient ppUSDC");
                 s.realFreeCollateral[account] = cur - abs;
             }
         }
 
+        // ─────────────────────────────────────────────
         // USDCSpent[account][marketId]
+        // ─────────────────────────────────────────────
         if (d.usdcSpent != 0) {
             if (d.usdcSpent > 0) {
                 s.USDCSpent[account][marketId] += uint256(d.usdcSpent);
@@ -81,6 +94,28 @@ library AllocateCapitalLib {
                 uint256 cur = s.redeemedUSDC[account][marketId];
                 s.redeemedUSDC[account][marketId] = cur - abs;
             }
+        }
+
+        // ─────────────────────────────────────────────
+        // Update netAlloc high watermark for this (account, marketId)
+        // netAlloc = USDCSpent - redeemedUSDC
+        // ─────────────────────────────────────────────
+        {
+            uint256 spent    = s.USDCSpent[account][marketId];
+            uint256 redeemed = s.redeemedUSDC[account][marketId];
+
+            if (spent > redeemed) {
+                uint256 currentNet =
+                    spent - redeemed;
+                uint256 prevHWM =
+                    s.netUSDCAllocationHighWatermark[account][marketId];
+
+                if (currentNet > prevHWM) {
+                    s.netUSDCAllocationHighWatermark[account][marketId] =
+                        currentNet;
+                }
+            }
+            // If spent <= redeemed, netAlloc <= 0 → we don't move the HWM.
         }
     }
 
@@ -121,16 +156,5 @@ library AllocateCapitalLib {
                 s.TotalMarketsValue = cur - abs;
             }
         }
-    }
-
-    /// Backwards-compatible helper: apply both account + global parts.
-    function _applyCapitalDeltas(
-        StorageLib.Storage storage s,
-        address account,
-        uint256 marketId,
-        CapitalDeltas memory d
-    ) internal {
-        _applyAccountDeltas(s, account, marketId, d);
-        _applyGlobalDeltas(s, marketId, d);
     }
 }

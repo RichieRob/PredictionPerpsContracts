@@ -14,7 +14,7 @@ const {
 async function setupMarketFixture() {
   // fx: { owner, trader, feeRecipient, usdc, aUSDC, aavePool, ppUSDC, ledger }
   const fx = await deployCore();
-  const { ledger } = fx;
+  const { ledger, owner } = fx;
 
   // 1) Deploy flat market maker
   const FlatMockMarketMaker = await ethers.getContractFactory(
@@ -28,26 +28,51 @@ async function setupMarketFixture() {
 
   // 3) Create market with ISC line (pure synthetic)
   const iscAmount = usdc("100000"); // 100k synthetic
+
+  // New signature:
+  // createMarket(
+  //   string name,
+  //   string ticker,
+  //   address dmm,
+  //   uint256 iscAmount,
+  //   bool doesResolve,
+  //   address oracle,
+  //   bytes oracleParams,
+  //   uint16 feeBps,
+  //   address marketCreator,
+  //   address[] feeWhitelistAccounts,
+  //   bool hasWhitelist
+  // )
   await ledger.createMarket(
     "Test Market",
     "TEST",
     await fx.flatMM.getAddress(),
     iscAmount,
-    false,             // doesResolve = false
-    ethers.ZeroAddress,
-    "0x"  );
+    false,              // doesResolve = false
+    ethers.ZeroAddress, // oracle
+    "0x",               // oracleParams
+    0,                  // feeBps
+    owner.address,      // marketCreator
+    [],                 // feeWhitelistAccounts
+    false               // hasWhitelist
+  );
 
   const markets = await ledger.getMarkets();
   fx.marketId = markets[0];
 
-  // 4) Create a single YES position, capturing ERC20 clone address
-  const [positionId, positionToken] =
+  // 4) Create a single YES position, capturing Back ERC20 clone address
+  // New signature:
+  // createPosition(marketId, name, ticker)
+  //   returns (uint256 positionId, address backToken, address layToken)
+  const [positionId, backToken, layToken] =
     await ledger.createPosition.staticCall(fx.marketId, "YES", "YES");
 
   await ledger.createPosition(fx.marketId, "YES", "YES");
 
-  fx.positionId = positionId;
-  fx.positionToken = positionToken;
+  fx.positionId    = positionId;
+  fx.positionToken = backToken; // keep old name for existing tests
+  fx.backToken     = backToken;
+  fx.layToken      = layToken;
 
   return fx;
 }

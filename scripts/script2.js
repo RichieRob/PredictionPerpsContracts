@@ -11,7 +11,6 @@ function chunkArray(arr, size) {
   return out;
 }
 
-
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("🚀 Running LMSR and market deployment with account:", deployer.address);
@@ -30,6 +29,10 @@ async function main() {
     throw new Error("Missing core addresses in deployments.json. Run deployCore.js first.");
   }
 
+  console.log("ℹ️ Using core contracts:");
+  console.log("   MockUSDC:", MOCK_USDC_ADDRESS);
+  console.log("   Ledger  :", LEDGER_ADDRESS);
+
   // ------------------------------------------------------------
   // 1) Mint deployer USDC
   // ------------------------------------------------------------
@@ -37,7 +40,8 @@ async function main() {
   const mockUSDC = await MockUSDC.attach(MOCK_USDC_ADDRESS);
 
   const amount = ethers.parseUnits("1000000", 6); // 1,000,000 USDC
-  await mockUSDC.mint(deployer.address, amount);
+  const mintTx = await mockUSDC.mint(deployer.address, amount);
+  await mintTx.wait();
   console.log("💰 Minted 1,000,000 USDC to deployer");
 
   // ------------------------------------------------------------
@@ -52,10 +56,10 @@ async function main() {
   console.log("📡 LMSRMarketMaker deployed:", lmsr.target);
 
   // ------------------------------------------------------------
-  // 3) Attach to Ledger
+  // 3) Attach to Ledger (ABI only, no library linking)
   // ------------------------------------------------------------
-  const Ledger = await ethers.getContractFactory("Ledger");
-  const ledger = await Ledger.attach(LEDGER_ADDRESS);
+  const ledger = await ethers.getContractAt("Ledger", LEDGER_ADDRESS);
+  console.log("🔗 Attached to Ledger at:", await ledger.getAddress());
 
   // ------------------------------------------------------------
   // 4) Whitelist LMSR as approved DMM
@@ -145,7 +149,7 @@ async function main() {
     { name: "Watermelon Wave", ticker: "WML" },
     { name: "Yuzu Spark", ticker: "YZU" },
     { name: "Zucchini Torch", ticker: "ZUC" },
-  
+
     // Animals
     { name: "Arctic Fox", ticker: "FOX" },
     { name: "Blue Whale", ticker: "WHA" },
@@ -172,7 +176,7 @@ async function main() {
     { name: "Wolf Spirit", ticker: "WLF" },
     { name: "Yak Charge", ticker: "YAK" },
     { name: "Zebra Flash", ticker: "ZEB" },
-  
+
     // Elements & vibes
     { name: "Aurora Beam", ticker: "AUR" },
     { name: "Blizzard Gale", ticker: "BLZ" },
@@ -200,7 +204,7 @@ async function main() {
     { name: "Xenon Pulse", ticker: "XEN" },
     { name: "Yield Bloom", ticker: "YLD" },
     { name: "Zenith Rise", ticker: "ZNT" },
-  
+
     // Memes, crypto, weird stuff
     { name: "Ape Frenzy", ticker: "APE" },
     { name: "Bagholder Pro", ticker: "BAG" },
@@ -221,10 +225,10 @@ async function main() {
     { name: "Quick Rug", ticker: "RUG" },
     { name: "Rekt Cannon", ticker: "REKT" },
     { name: "Supercycle", ticker: "SUP" },
-    { name: "To The Stars", ticker: "STS" }
+    { name: "To The Stars", ticker: "STS" },
   ];
-  
-    // ------------------------------------------------------------
+
+  // ------------------------------------------------------------
   // 6) Create positions on the LEDGER in batches
   // ------------------------------------------------------------
   const batchSize = 15; // tweak if needed: 10–20 is usually safe

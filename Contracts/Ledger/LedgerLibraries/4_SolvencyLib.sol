@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 import "./3_HeapLib.sol";
-import "./3_AllocateCapitalLib.sol";
+import "./7_AllocateCapitalLib.sol";
 import "./2_MarketManagementLib.sol";
 
 /// @title SolvencyLib

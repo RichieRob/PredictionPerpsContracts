@@ -1,57 +1,65 @@
 // test/ledger.resolution.simple.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployCore, usdc, EMPTY_PERMIT, mintAndDeposit } = require("./helpers/core");
+const { deployCore, usdc, EMPTY_PERMIT } = require("./helpers/core");
 const { expectCoreSystemInvariants } = require("./helpers/markets");
-const { resolveViaMockOracle } = require("./helpers/resolution");
 
 describe("MarketMakerLedger – simple resolution + winnings claim", () => {
   let fx, mm, marketId, posA, posB;
 
   beforeEach(async () => {
     fx = await deployCore();
+    const { owner, ledger } = fx;
 
     const Flat = await ethers.getContractFactory("FlatMockMarketMaker");
     mm = await Flat.deploy();
     await mm.waitForDeployment();
 
-    // Use owner as a dumb oracle (no MockOracle here)
-    await fx.ledger.createMarket(
-      "Election 2028",
-      "EL",
-      ethers.ZeroAddress,   // resolving market → no DMM
-      0,                    // no ISC
-      true,                 // resolves
-      fx.owner.address,     // oracle (unused, but stored)
-      "0x"    );
+    // Resolving market with no DMM (we still trade via mm as an external DMM)
+    await ledger
+      .connect(owner)
+      .createMarket(
+        "Election 2028",
+        "EL",
+        ethers.ZeroAddress,   // no DMM registered on ledger
+        0,                    // no ISC
+        true,                 // doesResolve
+        owner.address,        // oracle (unused in this simple test)
+        "0x",
+        0,                    // feeBps
+        owner.address,        // marketCreator
+        [],                   // feeWhitelistAccounts
+        false                 // hasWhitelist
+      );
 
-    marketId = (await fx.ledger.getMarkets())[0];
+    marketId = (await ledger.getMarkets())[0];
 
-    await fx.ledger.createPosition(marketId, "Alice", "A");
-    await fx.ledger.createPosition(marketId, "Bob",   "B");
-    const P = await fx.ledger.getMarketPositions(marketId);
+    await ledger.connect(owner).createPosition(marketId, "Alice", "A");
+    await ledger.connect(owner).createPosition(marketId, "Bob", "B");
+    const P = await ledger.getMarketPositions(marketId);
     posA = P[0];
     posB = P[1];
 
-    // trader deposit via helper
-    await mintAndDeposit({
-      usdc: fx.usdc,
-      ledger: fx.ledger,
-      trader: fx.trader,
-      amount: usdc("1000"),
-    });
+    // trader funded
+    await fx.usdc.mint(fx.trader.address, usdc("1000"));
+    await fx.usdc
+      .connect(fx.trader)
+      .approve(await ledger.getAddress(), usdc("1000"));
+    await ledger
+      .connect(fx.trader)
+      .deposit(fx.trader.address, usdc("1000"), 0, 0, EMPTY_PERMIT);
 
-    // MM deposit via helper
-    await mintAndDeposit({
-      usdc: fx.usdc,
-      ledger: fx.ledger,
-      trader: fx.owner,
-      to: await mm.getAddress(),
-      amount: usdc("1500"),
-    });
+    // MM funded so it can sell
+    await fx.usdc.mint(fx.owner.address, usdc("1500"));
+    await fx.usdc
+      .connect(fx.owner)
+      .approve(await ledger.getAddress(), usdc("1500"));
+    await ledger
+      .connect(fx.owner)
+      .deposit(await mm.getAddress(), usdc("1500"), 0, 0, EMPTY_PERMIT);
 
     // trader buys some A
-    await fx.ledger.connect(fx.trader).buyExactTokens(
+    await ledger.connect(fx.trader).buyExactTokens(
       await mm.getAddress(),
       marketId,
       posA,
@@ -62,18 +70,23 @@ describe("MarketMakerLedger – simple resolution + winnings claim", () => {
   });
 
   it("resolves → trader claims winnings → invariants preserved", async () => {
-    // manual resolution (overloaded function, no oracle helper here)
-    await fx.ledger["resolveMarket(uint256,uint256)"](marketId, posA);
+    const { ledger, trader } = fx;
 
-    await fx.ledger.connect(fx.trader).claimAllPendingWinnings();
+    // manual resolution (winner = posA)
+    await ledger["resolveMarket(uint256,uint256)"](marketId, posA);
 
-    const winnings = await fx.ledger.realFreeCollateral(fx.trader.address);
+    // NEW API: batchClaimWinnings(account, marketIds)
+    await ledger
+      .connect(trader)
+      .batchClaimWinnings(trader.address, [marketId]);
+
+    const winnings = await ledger.realFreeCollateral(trader.address);
     expect(winnings).to.be.gt(0n);
 
     await expectCoreSystemInvariants(fx, {
-      accounts: [fx.trader.address, await mm.getAddress()],
+      accounts: [trader.address, await mm.getAddress()],
       marketId,
-      checkRedeemabilityFor: [fx.trader.address, await mm.getAddress()],
+      checkRedeemabilityFor: [trader.address, await mm.getAddress()],
     });
   });
 });

@@ -17,59 +17,83 @@ describe("MarketMakerLedger – Oracle driven resolution", () => {
     oracle = await MockOracle.deploy();
     await oracle.waitForDeployment();
 
+    const oracleAddr = await oracle.getAddress();
+
     await fx.ledger.createMarket(
       "Election 2032",
       "EL32",
-      ethers.ZeroAddress,
-      0,
-      true,
-      oracle.getAddress(),
-      "0x"    );
+      ethers.ZeroAddress, // dmm
+      0,                  // iscAmount
+      true,               // doesResolve
+      oracleAddr,         // oracle
+      "0x",               // oracleParams
+      0,                  // feeBps
+      fx.owner.address,   // marketCreator
+      [],                 // feeWhitelistAccounts
+      false               // hasWhitelist
+    );
 
     marketId = (await fx.ledger.getMarkets())[0];
 
     await fx.ledger.createPosition(marketId, "Alice", "A");
     await fx.ledger.createPosition(marketId, "Bob", "B");
     const P = await fx.ledger.getMarketPositions(marketId);
-    posA=P[0]; posB=P[1];
+    posA = P[0];
+    posB = P[1];
 
     // trader funded
     await fx.usdc.mint(fx.trader.address, usdc("1000"));
-    await fx.usdc.connect(fx.trader).approve(await fx.ledger.getAddress(), usdc("1000"));
-    await fx.ledger.connect(fx.trader).deposit(fx.trader.address, usdc("1000"),0,0,EMPTY_PERMIT);
+    await fx.usdc
+      .connect(fx.trader)
+      .approve(await fx.ledger.getAddress(), usdc("1000"));
+    await fx.ledger
+      .connect(fx.trader)
+      .deposit(fx.trader.address, usdc("1000"), 0, 0, EMPTY_PERMIT);
 
     // MM funded so it can sell
     await fx.usdc.mint(fx.owner.address, usdc("2000"));
-    await fx.usdc.connect(fx.owner).approve(await fx.ledger.getAddress(), usdc("2000"));
-    await fx.ledger.connect(fx.owner).deposit(await mm.getAddress(), usdc("1500"),0,0,EMPTY_PERMIT);
+    await fx.usdc
+      .connect(fx.owner)
+      .approve(await fx.ledger.getAddress(), usdc("2000"));
+    await fx.ledger
+      .connect(fx.owner)
+      .deposit(await mm.getAddress(), usdc("1500"), 0, 0, EMPTY_PERMIT);
 
     // buy Alice shares
     await fx.ledger.connect(fx.trader).buyExactTokens(
-      await mm.getAddress(), marketId, posA, true, usdc("200"), usdc("1000")
+      await mm.getAddress(),
+      marketId,
+      posA,
+      true,
+      usdc("200"),
+      usdc("1000")
     );
   });
 
   it("resolves via oracle + trader claims winnings + invariants ok", async () => {
-
     // ORACLE PUSHES RESULTS
-    await oracle.pushResolution(marketId,posA);
+    await oracle.pushResolution(marketId, posA);
 
     // LEDGER QUERIES ORACLE & RESOLVES
     await fx.ledger["resolveMarket(uint256)"](marketId);
 
-    // Claim winnings
-    await fx.ledger.connect(fx.trader).claimAllPendingWinnings();
+    // Claim winnings (NEW API)
+    await fx.ledger
+      .connect(fx.trader)
+      .batchClaimWinnings(fx.trader.address, [marketId]);
 
     const win = await fx.ledger.realFreeCollateral(fx.trader.address);
     expect(win).to.be.gt(0n);
 
     // 🔥 all invariants intact
-    expect(await fx.ledger.invariant_checkSolvencyAllMarkets(fx.trader.address)).to.equal(true);
+    expect(
+      await fx.ledger.invariant_checkSolvencyAllMarkets(fx.trader.address)
+    ).to.equal(true);
 
-    const [tvl,bal]=await fx.ledger.invariant_tvl();
+    const [tvl, bal] = await fx.ledger.invariant_tvl();
     expect(tvl).to.equal(bal);
 
-    const [lhs,rhs]=await fx.ledger.invariant_systemBalance();
+    const [lhs, rhs] = await fx.ledger.invariant_systemBalance();
     expect(lhs).to.equal(rhs);
   });
 });

@@ -24,22 +24,29 @@ async function setupLmsrLedgerFixture() {
   // 3) Create market on the ledger with an ISC line, like setupMarketFixture
   const iscAmount = usdc("100000"); // 100k synthetic, same as your flatMM tests
 
-  await ledger.createMarket(
-    "LMSR Test Market",
-    "LMSR",
-    lmsrAddr,
-    iscAmount,
-    false,              // doesResolve = false
-    ethers.ZeroAddress, // oracle
-    "0x"  );
+  await ledger
+    .connect(owner)
+    .createMarket(
+      "LMSR Test Market",
+      "LMSR",
+      lmsrAddr,
+      iscAmount,
+      false,              // doesResolve = false
+      ethers.ZeroAddress, // oracle
+      "0x",               // oracleParams
+      0,                  // feeBps
+      owner.address,      // marketCreator
+      [],                 // feeWhitelistAccounts
+      false               // hasWhitelist
+    );
 
   const markets = await ledger.getMarkets();
   expect(markets.length).to.equal(1);
   fx.marketId = markets[0];
 
   // 4) Create YES / NO positions on the ledger
-  await ledger.createPosition(fx.marketId, "YES", "YES");
-  await ledger.createPosition(fx.marketId, "NO",  "NO");
+  await ledger.connect(owner).createPosition(fx.marketId, "YES", "YES");
+  await ledger.connect(owner).createPosition(fx.marketId, "NO",  "NO");
 
   const positionIds = await ledger.getMarketPositions(fx.marketId);
   expect(positionIds.length).to.equal(2);

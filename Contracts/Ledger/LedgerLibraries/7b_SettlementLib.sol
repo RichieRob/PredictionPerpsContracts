@@ -2,9 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
-import "./3_HeapLib.sol";
 import "./5_LedgerLib.sol";
-import "./3_AllocateCapitalLib.sol";
+import "./7_AllocateCapitalLib.sol";
 import "./7a_SettlementCore.sol"; // library SettlementAccountingLib
 
 interface JNotify {
@@ -15,11 +14,9 @@ interface JNotify {
 /// @notice Thin wrapper around SettlementAccountingLib:
 ///         - bundles parameters
 ///         - calls applyDeltas
-///         - projects Back/Lay/ppUSDC ERC20-level events.
+///         - projects Back/Lay/ppUSDC ERC20-level events using
+///           canonical LedgerLib.getBackAndLayBalances snapshots.
 library SettlementLib {
-    // We don't actually use the "using" in this lib any more
-    // using AllocateCapitalLib for AllocateCapitalLib.CapitalDeltas;
-
     event Settlement(
         address indexed payer,
         address indexed payee,
@@ -30,18 +27,18 @@ library SettlementLib {
         uint256 quoteAmount
     );
 
-    /// @dev Context for ERC20 mirror projection, kept in memory
-    ///      so we pass only one pointer instead of a ton of params.
     struct MirrorCtx {
         address payer;
         uint256 marketId;
         uint256 positionId;
-        bool    isBack;
-        uint256 baseAmount;
 
         address backToken;
         address layToken;
-        uint256 oldLayBalance;
+
+        uint256 backBefore;
+        uint256 layBefore;
+        uint256 backAfter;
+        uint256 layAfter;
 
         AllocateCapitalLib.CapitalDeltas payerDeltas;
         int256  payerWinningsInt;
@@ -50,66 +47,7 @@ library SettlementLib {
     }
 
     // ─────────────────────────────────────────────────────
-    // Small helpers (local to this lib)
-    // ─────────────────────────────────────────────────────
-
-    function _createdSharesDeltaForAccount(
-        AllocateCapitalLib.CapitalDeltas memory d,
-        bool     isBack,
-        bool     isPayer,      // true = payer, false = payee
-        uint256  baseAmount
-    ) private pure returns (int256 csDelta) {
-        // ΔnetAlloc = Δ(USDCSpent - redeemedUSDC)
-        int256 netAllocDelta = d.usdcSpent - d.redeemedUSDC;
-
-        // Position-specific tilt/layOffset delta for THIS position:
-        int256 posDelta = 0;
-
-        if (isBack) {
-            // Back: only tilt moves; layOffset stays 0
-            // payee → payer transfer
-            posDelta = isPayer
-                ? int256(baseAmount)     // payer gets +tilt
-                : -int256(baseAmount);   // payee gets -tilt
-        } else {
-            // Lay case:
-            // We rely on netAllocDelta to capture any net-out of Back exposure.
-            posDelta = 0;
-        }
-
-        return netAllocDelta + posDelta;
-    }
-
-    /// @dev Lay ERC20 "balance" for an account on (marketId, positionId),
-    ///      derived from min-tilt heap. Zero if:
-    ///        - market is resolved,
-    ///        - this position is not the min-tilt leg,
-    ///        - or the min-tilt delta <= 0.
-    function _getLayBalanceForAccount(
-        StorageLib.Storage storage s,
-        address account,
-        uint256 marketId,
-        uint256 positionId
-    ) private view returns (uint256) {
-        if (s.marketResolved[marketId]) {
-            return 0;
-        }
-
-        (, uint256 minPos) = LedgerLib.getMinTilt(account, marketId);
-        if (minPos != positionId) {
-            return 0;
-        }
-
-        int256 delta = HeapLib._getMinTiltDelta(account, marketId);
-        if (delta <= 0) {
-            return 0;
-        }
-
-        return uint256(delta);
-    }
-
-    // ─────────────────────────────────────────────────────
-    // Public shells (small, no heavy locals)
+    // Public shells (now EXTERNAL so they are true library calls)
     // ─────────────────────────────────────────────────────
 
     /// @dev Normal settlement: includes payer rebalanceFullView.
@@ -121,7 +59,7 @@ library SettlementLib {
         bool    isBack,
         uint256 baseAmount,   // tokens
         uint256 quoteAmount   // ppUSDC / USDC
-    ) internal {
+    ) external {
         _settleCore(
             payer,
             payee,
@@ -154,7 +92,7 @@ library SettlementLib {
         bool    isBack,
         uint256 baseAmount,
         uint256 quoteAmount
-    ) internal {
+    ) external {
         _settleCore(
             payer,
             payee,
@@ -178,7 +116,7 @@ library SettlementLib {
     }
 
     // ─────────────────────────────────────────────────────
-    // Core wrapper: params + ERC20 mirrors
+    // Core wrapper: params + ERC20 mirrors (snapshot-based)
     // ─────────────────────────────────────────────────────
 
     function _settleCore(
@@ -186,15 +124,15 @@ library SettlementLib {
         address payee,
         uint256 marketId,
         uint256 positionId,
-        bool    isBack,
-        uint256 baseAmount,   // tokens
-        uint256 quoteAmount,  // ppUSDC / USDC
+        bool    isBack,          // informational
+        uint256 baseAmount,      // tokens (informational only here)
+        uint256 quoteAmount,     // ppUSDC / USDC (informational)
         bool    skipPayerRebalance
-    ) private {
+    ) internal {
         require(payer != address(0), "payer=0");
         require(payee != address(0), "payee=0");
         require(baseAmount > 0, "base=0");
-        // NOTE: quoteAmount may legitimately be 0 for pure position transfers.
+        // quoteAmount may be 0 for pure position transfers.
 
         StorageLib.Storage storage s = StorageLib.getStorage();
 
@@ -202,19 +140,11 @@ library SettlementLib {
         address backToken = s.positionBackERC20[marketId][positionId];
         address layToken  = s.positionLayERC20[marketId][positionId];
 
-        // Snapshot LAY balance for payer *before* settlement
-        uint256 oldLayBalance = 0;
-        if (layToken != address(0)) {
-            oldLayBalance = _getLayBalanceForAccount(
-                s,
-                payer,
-                marketId,
-                positionId
-            );
-        }
+        // Snapshot canonical BACK/LAY balances for payer *before* settlement
+        (uint256 backBefore, uint256 layBefore) =
+            LedgerLib.getBackAndLayBalances(payer, marketId, positionId);
 
         // ---- Heavy core: rebalances + resolution + deltas ----
-
         SettlementAccountingLib.SettleParams memory p =
             SettlementAccountingLib.SettleParams({
                 payer: payer,
@@ -232,90 +162,69 @@ library SettlementLib {
             int256 payerWinningsInt
         ) = SettlementAccountingLib.applyDeltas(s, p);
 
-        // ---- Build ctx AFTER heavy call so we don't keep extra vars live ----
+        // Snapshot canonical BACK/LAY balances for payer *after* settlement
+        (uint256 backAfter, uint256 layAfter) =
+            LedgerLib.getBackAndLayBalances(payer, marketId, positionId);
 
+        // Build ctx AFTER heavy call so we don't keep extra vars live
         MirrorCtx memory ctx;
-        ctx.payer           = payer;
-        ctx.marketId        = marketId;
-        ctx.positionId      = positionId;
-        ctx.isBack          = isBack;
-        ctx.baseAmount      = baseAmount;
-        ctx.backToken       = backToken;
-        ctx.layToken        = layToken;
-        ctx.oldLayBalance   = oldLayBalance;
-        ctx.payerDeltas     = payerDeltas;
-        ctx.payerWinningsInt= payerWinningsInt;
-        ctx.ppUSDC          = address(s.ppUSDC);
+        ctx.payer            = payer;
+        ctx.marketId         = marketId;
+        ctx.positionId       = positionId;
+        ctx.backToken        = backToken;
+        ctx.layToken         = layToken;
+        ctx.backBefore       = backBefore;
+        ctx.layBefore        = layBefore;
+        ctx.backAfter        = backAfter;
+        ctx.layAfter         = layAfter;
+        ctx.payerDeltas      = payerDeltas;
+        ctx.payerWinningsInt = payerWinningsInt;
+        ctx.ppUSDC           = address(s.ppUSDC);
 
-        _projectERC20Mirrors(s, ctx);
+        _projectERC20Mirrors(ctx);
     }
 
-    /// @dev ERC20 mirror projection in its own function with a single
-    ///      memory struct argument to keep the stack shallow.
+    /// @dev ERC20 mirror projection using canonical balance snapshots.
+    ///      Only payer is considered (we ignore payee for mint/burn).
     function _projectERC20Mirrors(
-        StorageLib.Storage storage s,
         MirrorCtx memory c
-    ) private {
-        // Back ERC20: createdShares delta for this position
-        int256 csDeltaPayer = 0;
-        if (c.isBack) {
-            csDeltaPayer = _createdSharesDeltaForAccount(
-                c.payerDeltas,
-                true,        // isBack
-                true,        // isPayer
-                c.baseAmount
-            );
-        }
-
-        // ppUSDC mirror: freeCollateral delta minus winnings
-        int256 fcDelta =
-            c.payerDeltas.realFreeCollateralAccount - c.payerWinningsInt;
-
-        // Lay ERC20 balance *after* all changes
-        uint256 newLayBalance = 0;
-        if (c.layToken != address(0)) {
-            newLayBalance = _getLayBalanceForAccount(
-                s,
-                c.payer,
-                c.marketId,
-                c.positionId
-            );
-        }
-
+    ) internal {
         // ─────────────────────────────────────────────
         // Back ERC20 mirror
         // ─────────────────────────────────────────────
-        if (c.backToken != address(0) && csDeltaPayer != 0) {
-            if (csDeltaPayer > 0) {
+        if (c.backToken != address(0) && c.backAfter != c.backBefore) {
+            if (c.backAfter > c.backBefore) {
+                uint256 diff = c.backAfter - c.backBefore;
                 // Mint to payer
                 JNotify(c.backToken).notifyTransfer(
                     address(0),
                     c.payer,
-                    uint256(csDeltaPayer)
+                    diff
                 );
             } else {
+                uint256 diff = c.backBefore - c.backAfter;
                 // Burn from payer
                 JNotify(c.backToken).notifyTransfer(
                     c.payer,
                     address(0),
-                    uint256(-csDeltaPayer)
+                    diff
                 );
             }
         }
 
         // ─────────────────────────────────────────────
-        // Lay ERC20 mirror: mint/burn from the change in lay balance.
+        // Lay ERC20 mirror
         // ─────────────────────────────────────────────
-        if (c.layToken != address(0) && newLayBalance != c.oldLayBalance) {
-            if (newLayBalance > c.oldLayBalance) {
-                uint256 diff = newLayBalance - c.oldLayBalance;
+        if (c.layToken != address(0) && c.layAfter != c.layBefore) {
+            if (c.layAfter > c.layBefore) {
+                uint256 diff = c.layAfter - c.layBefore;
                 JNotify(c.layToken).notifyTransfer(
                     address(0),
                     c.payer,
                     diff
                 );
             } else {
-                uint256 diff = c.oldLayBalance - newLayBalance;
+                uint256 diff = c.layBefore - c.layAfter;
                 JNotify(c.layToken).notifyTransfer(
                     c.payer,
                     address(0),
@@ -325,8 +234,11 @@ library SettlementLib {
         }
 
         // ─────────────────────────────────────────────
-        // ppUSDC mirror: use fcDelta (already net of winnings).
+        // ppUSDC mirror: freeCollateral delta minus winnings.
         // ─────────────────────────────────────────────
+        int256 fcDelta =
+            c.payerDeltas.realFreeCollateralAccount - c.payerWinningsInt;
+
         if (fcDelta != 0) {
             if (fcDelta > 0) {
                 // Mint ppUSDC to payer

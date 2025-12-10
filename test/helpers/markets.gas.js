@@ -25,15 +25,19 @@ async function expectGasForMarketWithPositions(
   // Make sure the DMM is allowed before creating the market
   await ledger.connect(owner).allowDMM(dmmAddress, true);
 
-  // Create market
+  // Create market (NEW SIGNATURE)
   const createMarketTx = await ledger.createMarket(
     marketName,
     marketTicker,
-    dmmAddress,
-    iscAmount,
-    false,              // doesResolve
-    ethers.ZeroAddress, // oracle
-    "0x"                // oracleParams
+    dmmAddress,          // dmm
+    iscAmount,           // iscAmount
+    false,               // doesResolve (gas test non-resolving)
+    ethers.ZeroAddress,  // oracle
+    "0x",                // oracleParams
+    0,                   // feeBps
+    owner.address,       // marketCreator
+    [],                  // feeWhitelistAccounts
+    false                // hasWhitelist
   );
   const createMarketReceipt = await createMarketTx.wait();
   console.log(
@@ -51,8 +55,10 @@ async function expectGasForMarketWithPositions(
   expect(marketNameOnChain).to.equal(marketName);
   expect(marketTickerOnChain).to.equal(marketTicker);
 
-  // Create positions in batch
-  const createPositionsTx = await ledger.createPositions(marketId, positions);
+  // Create positions in batch (ONLY OWNER)
+  const createPositionsTx = await ledger
+    .connect(owner)
+    .createPositions(marketId, positions);
   const createPositionsReceipt = await createPositionsTx.wait();
   console.log(
     `createPositions (${positions.length} positions) gas used:`,
@@ -253,7 +259,7 @@ async function runSizeGasHammer(fx, largeN, options = {}) {
 
   // ──────────────────────────────────────
   // Markets: 1 large + 3 small
-  // ──────────────────────────────────────
+  // ─────────────────────────────────────-
 
   const large = await createLmsrMarket(fx, {
     name: `Large Market ${largeN}`,
@@ -311,7 +317,7 @@ async function runSizeGasHammer(fx, largeN, options = {}) {
 
   // ──────────────────────────────────────
   // Deposits
-  // ──────────────────────────────────────
+  // ─────────────────────────────────────-
 
   for (const t of traders) {
     await mintAndDeposit({
@@ -324,7 +330,7 @@ async function runSizeGasHammer(fx, largeN, options = {}) {
 
   // ──────────────────────────────────────
   // Hammer
-  // ──────────────────────────────────────
+  // ─────────────────────────────────────-
 
   const stats = {};
   const firstSeen = {};

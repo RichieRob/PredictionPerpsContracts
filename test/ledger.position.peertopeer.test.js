@@ -33,8 +33,12 @@ describe("MarketMakerLedger – peer-to-peer PositionERC20 transfers", function 
       iscSeed,
       false,              // doesResolve
       ethers.ZeroAddress, // oracle
-      "0x"          // oracleParams
-    );
+  "0x",
+  0,                             // feeBps
+  fx.owner.address,              // marketCreator
+  [],                            // feeWhitelistAccounts
+  false                          // hasWhitelist
+);
 
     const markets = await ledger.getMarkets();
     marketId = markets[0];

@@ -37,8 +37,12 @@ describe("MarketMakerLedger – resolution freezes trading & ERC20 views", () =>
       0,                             // no ISC
       true,                          // doesResolve = true
       await oracle.getAddress(),     // oracle
-      "0x");
-
+      "0x",
+      0,                             // feeBps
+      fx.owner.address,              // marketCreator
+      [],                            // feeWhitelistAccounts
+      false                          // hasWhitelist
+    );
     marketId = (await fx.ledger.getMarkets())[0];
 
     await fx.ledger.createPosition(marketId, "Alice", "A");
@@ -118,9 +122,11 @@ describe("MarketMakerLedger – resolution freezes trading & ERC20 views", () =>
       preTokenBalForTransferCheck: preTokenBal,
     });
 
-    // 4) claim is a no-op on visible ppUSDC (lazy bookkeeping only)
+    // 4) Explicit janitor claim on this market is a no-op on visible ppUSDC
     const preClaimPp = ppAfterResolve;
-    await fx.ledger.connect(fx.trader).claimAllPendingWinnings();
+    await fx.ledger
+      .connect(fx.trader)
+      .batchClaimWinnings(fx.trader.address, [marketId]);
     const postClaimPp = await fx.ppUSDC.balanceOf(fx.trader.address);
     expect(postClaimPp).to.equal(preClaimPp);
 
@@ -209,38 +215,38 @@ describe("MarketMakerLedger – resolution freezes trading & ERC20 views", () =>
 
     // ERC20 views frozen for all three accounts
     await assertMarketFrozenFor({
-        ledger: fx.ledger,
-        posToken: posAToken,
-        account: fx.trader.address,
-        mmAddr,
-        marketId,
-        positionId: posA,
-        preTokenBalForTransferCheck: preToken1,
-        checkTrading: true,   // explicit, but default anyway
-      });
-  
-      await assertMarketFrozenFor({
-        ledger: fx.ledger,
-        posToken: posAToken,
-        account: trader2,
-        mmAddr,
-        marketId,
-        positionId: posA,
-        preTokenBalForTransferCheck: preToken2,
-        checkTrading: true,
-      });
-  
-      // MM is a contract, *not* a signer → only check balances/views, skip trading
-      await assertMarketFrozenFor({
-        ledger: fx.ledger,
-        posToken: posAToken,
-        account: mmAddr,
-        mmAddr,
-        marketId,
-        positionId: posA,
-        preTokenBalForTransferCheck: 0n,
-        checkTrading: false,  // 👈 important
-      });
+      ledger: fx.ledger,
+      posToken: posAToken,
+      account: fx.trader.address,
+      mmAddr,
+      marketId,
+      positionId: posA,
+      preTokenBalForTransferCheck: preToken1,
+      checkTrading: true,   // explicit, but default anyway
+    });
+
+    await assertMarketFrozenFor({
+      ledger: fx.ledger,
+      posToken: posAToken,
+      account: trader2,
+      mmAddr,
+      marketId,
+      positionId: posA,
+      preTokenBalForTransferCheck: preToken2,
+      checkTrading: true,
+    });
+
+    // MM is a contract, *not* a signer → only check balances/views, skip trading
+    await assertMarketFrozenFor({
+      ledger: fx.ledger,
+      posToken: posAToken,
+      account: mmAddr,
+      mmAddr,
+      marketId,
+      positionId: posA,
+      preTokenBalForTransferCheck: 0n,
+      checkTrading: false,  // 👈 important
+    });
 
     // sanity: traders definitely up by token count
     expect(postPp1 - prePp1).to.equal(preToken1);

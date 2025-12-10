@@ -1,5 +1,4 @@
 // test/ledger.trade.gasprofile.test.js
-
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { usdc, mintAndDeposit } = require("./helpers/core");
@@ -58,7 +57,9 @@ function printTable(title, rows) {
 // reusing the same ledger + lmsr
 // ──────────────────────────────────────
 
-async function createLmsrMarket({ owner, ledger, lmsr }, opts = {}) {
+async function createLmsrMarket(fx, opts = {}) {
+  const { owner, ledger, lmsr } = fx;
+
   const {
     name = "Extra Market",
     ticker = "EXTRA",
@@ -69,14 +70,21 @@ async function createLmsrMarket({ owner, ledger, lmsr }, opts = {}) {
 
   // 1) create the market with an ISC line
   const iscAmount = U(100_000);
-  await ledger.createMarket(
-    name,
-    ticker,
-    lmsrAddr,
-    iscAmount,
-    false,
-    ethers.ZeroAddress,
-    "0x"  );
+  await ledger
+    .connect(owner)
+    .createMarket(
+      name,
+      ticker,
+      lmsrAddr,
+      iscAmount,
+      false,
+      ethers.ZeroAddress,
+      "0x",
+      0,                 // feeBps
+      owner.address,     // marketCreator
+      [],                // feeWhitelistAccounts
+      false              // hasWhitelist
+    );
 
   const markets = await ledger.getMarkets();
   const marketId = markets[markets.length - 1];
@@ -85,7 +93,7 @@ async function createLmsrMarket({ owner, ledger, lmsr }, opts = {}) {
   const posIds = [];
   for (let i = 0; i < nPositions; i++) {
     const label = `P${i}`;
-    await ledger.createPosition(marketId, label, label);
+    await ledger.connect(owner).createPosition(marketId, label, label);
   }
   const created = await ledger.getMarketPositions(marketId);
   for (const p of created) posIds.push(p);
@@ -126,7 +134,6 @@ describe("MarketMakerLedger – trade gas profiling", function () {
     } = fx;
 
     const dmmAddr = await lmsr.getAddress();
-    const ledgerAddr = await ledger.getAddress();
 
     // extra traders
     const signers = await ethers.getSigners();
@@ -269,7 +276,6 @@ describe("MarketMakerLedger – trade gas profiling", function () {
     // ──────────────────────────────────────
     // Scenario D: first trade per position
     // within the multi-outcome market m3
-    // (same user, same market, different positions)
     // ──────────────────────────────────────
 
     const D_rows = [];

@@ -79,6 +79,8 @@ library ERC20BridgeLib {
         uint256 amount
     ) internal {
         require(amount > 0, "ERC20BridgeLib: zero amount");
+        //We can remove the below constraint if we dont call ERC20Settle and just call settle, but its a bit more gas, and it is strange ERC20 behaviour to be able to transfer more tokens than you have..
+        require(erc20BalanceOf(token, from) >= amount, "insufficient balance for ERC20 type transfer");
         require(to != address(0), "ERC20BridgeLib: to=0");
         if (from == to) return; // no-op, matches ERC20 semantics
 
@@ -86,6 +88,8 @@ library ERC20BridgeLib {
 
         require(msg.sender == token, "ERC20BridgeLib: only token");
         require(s.erc20Registered[token], "ERC20BridgeLib: unregistered token");
+
+        
 
         uint256 marketId   = s.erc20MarketId[token];
         uint256 positionId = s.erc20PositionId[token];
@@ -155,7 +159,7 @@ library ERC20BridgeLib {
     ///           Includes ISC for the DMM automatically via getCreatedShares.
     ///         - Lay: only the minTilt position for the account has a
     ///           non-zero balance, equal to getMinTiltDelta(account, marketId).
-function erc20BalanceOf(address token, address account)
+    function erc20BalanceOf(address token, address account)
         internal
         view
         returns (uint256)
@@ -167,30 +171,12 @@ function erc20BalanceOf(address token, address account)
         uint256 positionId = s.erc20PositionId[token];
         bool    isBack     = s.erc20IsBack[token];
 
-        if (s.marketResolved[marketId]) {
-            return 0;
-        }
+        (uint256 backBal, uint256 layBal) =
+            LedgerLib.getBackAndLayBalances(account, marketId, positionId);
 
-        if (isBack) {
-            // BACK MIRROR
-            int256 avail = LedgerLib.getCreatedShares(
-                account,
-                marketId,
-                positionId
-            );
-            if (avail <= 0) return 0;
-            return uint256(avail);
-        } else {
-            // LAY MIRROR
-            (, uint256 minPosId) = LedgerLib.getMinTilt(account, marketId);
-            if (minPosId != positionId) {
-                return 0;
-            }
-
-            int256 delta = HeapLib._getMinTiltDelta(account, marketId);
-            if (delta <= 0) return 0;
-            return uint256(delta);
-        }
+        return isBack ? backBal : layBal;
     }
+
+
 }
 

@@ -1,4 +1,3 @@
-// test/helpers/markets.meta.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -6,32 +5,48 @@ const { ethers } = require("hardhat");
  * Creates a market with the given details and ensures the DMM is allowed.
  * Returns the created marketId.
  */
-async function createMarketWithDetails(fx, {
-  name,
-  ticker,
-  dmmAddress,
-  iscAmount = 0n,
-}) {
+async function createMarketWithDetails(
+  fx,
+  {
+    name,
+    ticker,
+    dmmAddress,
+    iscAmount = 0n,
+    doesResolve = false,
+    oracle = ethers.ZeroAddress,
+    oracleParams = "0x",
+    feeBps = 0,
+    marketCreator,          // optional override
+    feeWhitelistAccounts = [],
+    hasWhitelist = false,
+  }
+) {
   const { ledger, owner } = fx;
+  const creator = marketCreator || owner.address;
 
-  // Ensure DMM is allowed
-  await ledger.connect(owner).allowDMM(dmmAddress, true);
+  // Ensure DMM is allowed (if non-zero)
+  if (dmmAddress && dmmAddress !== ethers.ZeroAddress) {
+    await ledger.connect(owner).allowDMM(dmmAddress, true);
+  }
 
-  const tx = await ledger.createMarket(
+  const tx = await ledger.connect(owner).createMarket(
     name,
     ticker,
     dmmAddress,
     iscAmount,
-    false,             // doesResolve
-    ethers.ZeroAddress,
-    "0x"
+    doesResolve,
+    oracle,
+    oracleParams,
+    feeBps,
+    creator,
+    feeWhitelistAccounts,
+    hasWhitelist
   );
   await tx.wait();
 
   const markets = await ledger.getMarkets();
-  expect(markets.length).to.equal(1);
-
-  const marketId = markets[0];
+  // Most tests use a fresh fx per file, but be defensive:
+  const marketId = markets[markets.length - 1];
 
   // Verify stored details
   const [onChainName, onChainTicker] = await ledger.getMarketDetails(marketId);
@@ -46,23 +61,26 @@ async function createMarketWithDetails(fx, {
  *  - correct number of positions
  *  - getPositionDetails, erc20Name, erc20Symbol are as expected
  */
-async function expectPositionsBatchMetaForMarket(fx, {
-  marketId,
-  positions,
-  marketName,
-  marketTicker,
-}) {
-  const { ledger } = fx;
+async function expectPositionsBatchMetaForMarket(
+  fx,
+  {
+    marketId,
+    positions,
+    marketName,
+    marketTicker,
+  }
+) {
+  const { ledger, owner } = fx;
 
-  await ledger.createPositions(marketId, positions);
+  // createPositions is onlyOwner
+  await ledger.connect(owner).createPositions(marketId, positions);
   const positionIds = await ledger.getMarketPositions(marketId);
   expect(positionIds.length).to.equal(positions.length);
 
   for (let i = 0; i < positionIds.length; i++) {
     const pid = positionIds[i];
 
-    const [posName, posTicker] =
-      await ledger.getPositionDetails(marketId, pid);
+    const [posName, posTicker] = await ledger.getPositionDetails(marketId, pid);
     expect(posName).to.equal(positions[i].name);
     expect(posTicker).to.equal(positions[i].ticker);
 
@@ -81,25 +99,31 @@ async function expectPositionsBatchMetaForMarket(fx, {
  *  - erc20Name / erc20Symbol
  *  - totalSupply == 0, balances == 0 for owner + trader
  */
-async function expectPositionsStaticMetaAndZeroBalances(fx, {
-  marketId,
-  teams,
-  marketName,
-  marketTicker,
-}) {
+async function expectPositionsStaticMetaAndZeroBalances(
+  fx,
+  {
+    marketId,
+    teams,
+    marketName,
+    marketTicker,
+  }
+) {
   const { ledger, owner, trader } = fx;
 
   const created = [];
 
   for (const t of teams) {
+    // staticCall via owner (createPosition is onlyOwner)
     const [positionId, backToken, layToken] =
-      await ledger.createPosition.staticCall(
+      await ledger.connect(owner).createPosition.staticCall(
         marketId,
         t.name,
         t.ticker
       );
 
-    const tx = await ledger.createPosition(marketId, t.name, t.ticker);
+    const tx = await ledger
+      .connect(owner)
+      .createPosition(marketId, t.name, t.ticker);
     await tx.wait();
 
     created.push({ positionId, backToken, layToken, ...t });

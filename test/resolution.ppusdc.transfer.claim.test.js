@@ -37,64 +37,65 @@ describe(
     }
 
     function printRow(name, real, eff, pp) {
-        const pad = (s)=> s.toString().padEnd(10);
-        console.log(
-          `${pad(name)} | real:${fmt(real)}  eff:${fmt(eff)}  pp:${fmt(pp)}`
-        );
-      }
-      
-      async function logState(label, ctx) {
-        const { fx, trader, receiver, mmAddr, marketId, posAToken, posBToken } = ctx;
-      
-        const [
-          ppT, realT, effT,
-          ppR, realR, effR,
-          ppM, realM, effM,
-          tokT_A, tokR_A, tokM_A,
-          tokT_B, tokR_B, tokM_B,
-          marketValue
-        ] = await Promise.all([
-          fx.ppUSDC.balanceOf(trader),
-          fx.ledger.realFreeCollateral(trader),
-          fx.ledger.effectiveFreeCollateral(trader),
-      
-          fx.ppUSDC.balanceOf(receiver),
-          fx.ledger.realFreeCollateral(receiver),
-          fx.ledger.effectiveFreeCollateral(receiver),
-      
-          fx.ppUSDC.balanceOf(mmAddr),
-          fx.ledger.realFreeCollateral(mmAddr),
-          fx.ledger.effectiveFreeCollateral(mmAddr),
-      
-          posAToken.balanceOf(trader),
-          posAToken.balanceOf(receiver),
-          posAToken.balanceOf(mmAddr),
-      
-          posBToken ? posBToken.balanceOf(trader) : 0n,
-          posBToken ? posBToken.balanceOf(receiver) : 0n,
-          posBToken ? posBToken.balanceOf(mmAddr) : 0n,
-      
-          fx.ledger.getMarketValue(marketId)
-        ]);
-      
-        console.log(`\n================ ${label} ================`);
-        console.log(`MarketValue = ${fmt(marketValue)} USDC\n`);
-      
-        console.log(`ACCOUNT STATE (real / effective / ppUSDC)\n`);
-        printRow("Trader",   realT, effT, ppT);
-        printRow("Receiver", realR, effR, ppR);
-        printRow("MM",       realM, effM, ppM);
-      
-        console.log(
-          `\nTotals → real:${fmt(realT+realR+realM)}  eff:${fmt(effT+effR+effM)}  pp:${fmt(ppT+ppR+ppM)}`
-        );
-      
-        console.log(`\nPosition Tokens:`);
-        console.log(`A → T:${tokT_A}  R:${tokR_A}  MM:${tokM_A}`);
-        if (posBToken)
-          console.log(`B → T:${tokT_B}  R:${tokR_B}  MM:${tokM_B}`);
-      }
-      
+      const pad = (s) => s.toString().padEnd(10);
+      console.log(
+        `${pad(name)} | real:${fmt(real)}  eff:${fmt(eff)}  pp:${fmt(pp)}`
+      );
+    }
+
+    async function logState(label, ctx) {
+      const { fx, trader, receiver, mmAddr, marketId, posAToken, posBToken } = ctx;
+
+      const [
+        ppT, realT, effT,
+        ppR, realR, effR,
+        ppM, realM, effM,
+        tokT_A, tokR_A, tokM_A,
+        tokT_B, tokR_B, tokM_B,
+        marketValue,
+      ] = await Promise.all([
+        fx.ppUSDC.balanceOf(trader),
+        fx.ledger.realFreeCollateral(trader),
+        fx.ledger.effectiveFreeCollateral(trader),
+
+        fx.ppUSDC.balanceOf(receiver),
+        fx.ledger.realFreeCollateral(receiver),
+        fx.ledger.effectiveFreeCollateral(receiver),
+
+        fx.ppUSDC.balanceOf(mmAddr),
+        fx.ledger.realFreeCollateral(mmAddr),
+        fx.ledger.effectiveFreeCollateral(mmAddr),
+
+        posAToken.balanceOf(trader),
+        posAToken.balanceOf(receiver),
+        posAToken.balanceOf(mmAddr),
+
+        posBToken ? posBToken.balanceOf(trader) : 0n,
+        posBToken ? posBToken.balanceOf(receiver) : 0n,
+        posBToken ? posBToken.balanceOf(mmAddr) : 0n,
+
+        fx.ledger.getMarketValue(marketId),
+      ]);
+
+      console.log(`\n================ ${label} ================`);
+      console.log(`MarketValue = ${fmt(marketValue)} USDC\n`);
+
+      console.log(`ACCOUNT STATE (real / effective / ppUSDC)\n`);
+      printRow("Trader",   realT, effT, ppT);
+      printRow("Receiver", realR, effR, ppR);
+      printRow("MM",       realM, effM, ppM);
+
+      console.log(
+        `\nTotals → real:${fmt(realT + realR + realM)}  eff:${fmt(
+          effT + effR + effM
+        )}  pp:${fmt(ppT + ppR + ppM)}`
+      );
+
+      console.log(`\nPosition Tokens:`);
+      console.log(`A → T:${tokT_A}  R:${tokR_A}  MM:${tokM_A}`);
+      if (posBToken)
+        console.log(`B → T:${tokT_B}  R:${tokR_B}  MM:${tokM_B}`);
+    }
 
     // --------------------------------------------------------------------
     //  Shared setup
@@ -104,16 +105,12 @@ describe(
       fx = await deployCore();
       trader = fx.trader.address;
 
-      const Flat = await ethers.getContractFactory(
-        "FlatMockMarketMaker"
-      );
+      const Flat = await ethers.getContractFactory("FlatMockMarketMaker");
       mm = await Flat.deploy();
       await mm.waitForDeployment();
       mmAddr = await mm.getAddress();
 
-      const MockOracle = await ethers.getContractFactory(
-        "MockOracle"
-      );
+      const MockOracle = await ethers.getContractFactory("MockOracle");
       oracle = await MockOracle.deploy();
       await oracle.waitForDeployment();
 
@@ -125,7 +122,11 @@ describe(
         0,
         true, // doesResolve = true
         await oracle.getAddress(),
-        "0x"
+        "0x",
+        0,                             // feeBps
+        fx.owner.address,              // marketCreator
+        [],                            // feeWhitelistAccounts
+        false                          // hasWhitelist
       );
 
       marketId = (await fx.ledger.getMarkets())[0];
@@ -134,8 +135,7 @@ describe(
       await fx.ledger.createPosition(marketId, "Alice", "A");
       await fx.ledger.createPosition(marketId, "Bob", "B");
 
-      const positions =
-        await fx.ledger.getMarketPositions(marketId);
+      const positions = await fx.ledger.getMarketPositions(marketId);
       posA = positions[0];
 
       const posATokenAddr =
@@ -199,8 +199,7 @@ describe(
         expect(preTokenBal).to.be.gt(0n);
 
         const prePpTrader = await fx.ppUSDC.balanceOf(trader);
-        const prePpReceiver =
-          await fx.ppUSDC.balanceOf(receiver);
+        const prePpReceiver = await fx.ppUSDC.balanceOf(receiver);
 
         // --- 1) Resolve via oracle (A wins) ---
         await resolveViaMockOracle({
@@ -210,18 +209,15 @@ describe(
           winningPositionId: posA,
         });
 
-        await logState(
-          "after resolution (before any claims)",
-          {
-            fx,
-            trader,
-            receiver,
-            mmAddr,
-            marketId,
-            posAToken,
-            posBToken: null,
-          }
-        );
+        await logState("after resolution (before any claims)", {
+          fx,
+          trader,
+          receiver,
+          mmAddr,
+          marketId,
+          posAToken,
+          posBToken: null,
+        });
 
         // Winner payout via ppUSDC view
         const ppAfterResolve = await assertWinnerPayout({
@@ -231,7 +227,7 @@ describe(
           preTokenBal,
         });
 
-        // Sanity: effective - real = pending before any _applyPendingWinnings(trader)
+        // Sanity: effective - real = pending before any janitor / auto-claims
         const realAfterResolve =
           await fx.ledger.realFreeCollateral(trader);
         const effAfterResolve =
@@ -272,7 +268,7 @@ describe(
         const preReceiverReal =
           await fx.ledger.realFreeCollateral(receiver);
 
-        // This call will internally call _applyPendingWinnings(trader) first,
+        // This call will internally pull + credit trader winnings (auto path),
         // then move halfWinnings from trader → receiver.
         await fx.ppUSDC
           .connect(fx.trader)
@@ -345,16 +341,16 @@ describe(
           postWithdrawReceiverReal
         );
 
-        // --- 4) Claims after all of this should be no-op on visible ppUSDC ---
+        // --- 4) Explicit janitor claims should now be no-ops on visible ppUSDC ---
         const preClaimPpTrader = postWithdrawPpTrader;
         const preClaimPpReceiver = postWithdrawPpReceiver;
 
         await fx.ledger
           .connect(fx.trader)
-          .claimAllPendingWinnings();
+          .batchClaimWinnings(trader, [marketId]);
         await fx.ledger
           .connect(receiverSigner)
-          .claimAllPendingWinnings();
+          .batchClaimWinnings(receiver, [marketId]);
 
         const postClaimPpTrader =
           await fx.ppUSDC.balanceOf(trader);
@@ -362,7 +358,7 @@ describe(
           await fx.ppUSDC.balanceOf(receiver);
 
         await logState(
-          "after claimAllPendingWinnings for both trader and receiver",
+          "after batchClaimWinnings for both trader and receiver",
           {
             fx,
             trader,

@@ -15,6 +15,13 @@ interface IPpUSDCEvents {
     function externalBurn(address from, uint256 amount) external;
 }
 
+struct FeesConfig {
+    uint16 feeBps;              // total fee rate
+    uint16 protocolShareBps;    // protocol share
+    address creator;            // fee beneficiary
+    bool   hasWhitelist;        // true = whitelist allowed, false = no-whitelist market
+}
+
 library StorageLib {
 
       struct IntentState {
@@ -80,6 +87,23 @@ library StorageLib {
         // Cumulative USDC this MM has ever deallocated / redeemed *from* this market.
         // Monotone increasing; never decreased.
         mapping(address => mapping(uint256 => uint256)) redeemedUSDC; // account => marketId => total deallocated
+
+        // High watermark of net allocation for this (account, marketId):
+        // netAllocHWM = max_t (USDCSpent - redeemedUSDC) at time t
+        mapping(address => mapping(uint256 => uint256)) netUSDCAllocationHighWatermark; // account => marketId => HWM
+
+        // config for market skim
+        mapping(uint256 => FeesConfig) feesConfig;
+
+        // Per-market HWM fee whitelist:
+        // true  => this account pays *no* HWM fees on this market
+        // false => normal HWM fee behaviour
+        mapping(uint256 => mapping(address => bool)) feeWhiteList; // marketId => account => isWhitelisted
+
+
+        // Global default used ONLY when creating new markets
+        uint16 newMarketProtocolFeeShareBps;
+
 
         // Yes this one makes sesne we are just increasing this up and down instead of touching all the individual tilts
         // Net Lay token flow for each MM in each market.

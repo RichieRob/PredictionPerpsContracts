@@ -74,7 +74,7 @@ async function main() {
   }
 
   // ------------------------------------------------------------
-  // 5) Create market (ISC > 0, no resolve, no oracle)
+  // 5) Create market (ISC > 0, no resolve, no oracle, no fees)
   // ------------------------------------------------------------
   const marketName   = "Test Market";
   const marketTicker = "TEST";
@@ -83,6 +83,12 @@ async function main() {
   const doesResolve  = false;
   const oracle       = ethers.ZeroAddress;
   const oracleParams = "0x";
+
+  // New fee / whitelist params (mirroring tests)
+  const feeBps              = 0;               // no trading fee
+  const marketCreator       = deployer.address; // same pattern as tests (owner)
+  const feeWhitelistAccounts = [];            // empty
+  const hasWhitelist        = false;          // whitelist disabled forever
 
   let marketId;
 
@@ -94,7 +100,11 @@ async function main() {
       iscAmount,
       doesResolve,
       oracle,
-      oracleParams
+      oracleParams,
+      feeBps,
+      marketCreator,
+      feeWhitelistAccounts,
+      hasWhitelist
     );
     const receipt = await tx.wait();
 
@@ -121,7 +131,7 @@ async function main() {
   }
 
   // ------------------------------------------------------------
-  // 6) Create 100 positions on the LEDGER
+  // 6) Define positions to create
   // ------------------------------------------------------------
   const positions = [
     { name: "Apple", ticker: "APL" },
@@ -243,7 +253,6 @@ async function main() {
         marketId,
         batch,
         {
-          // optional – but helps if Hardhat still underestimates
           gasLimit: 12_000_000n,
         }
       );
@@ -265,7 +274,6 @@ async function main() {
   // 7) Initialise LMSR for this market
   // ------------------------------------------------------------
 
-  // Get the ledger position IDs we just created
   const positionIds = await ledger.getMarketPositions(marketId);
   console.log(
     "ℹ️ Ledger position IDs for LMSR init:",
@@ -301,7 +309,7 @@ async function main() {
     marketTicker,
   };
 
-  let existingData = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const existingData = JSON.parse(fs.readFileSync(filePath, "utf8"));
   existingData.lmsr = lmsrData;
   fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2));
   console.log(`LMSR and market details saved to ${filePath}`);

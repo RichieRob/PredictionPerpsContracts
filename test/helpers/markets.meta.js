@@ -1,3 +1,4 @@
+// test/helpers/markets.meta.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -57,123 +58,137 @@ async function createMarketWithDetails(
 }
 
 /**
- * Creates positions in batch and checks:
+ * Batch meta check:
  *  - correct number of positions
- *  - getPositionDetails, erc20Name, erc20Symbol are as expected
+ *  - base name/symbol (no Back/Lay prefix)
+ *  - plus a Back+Lay sanity check on the first position
  */
 async function expectPositionsBatchMetaForMarket(
   fx,
   {
     marketId,
-    positions,
+    positions,    // [{ name, ticker }, ...]
     marketName,
     marketTicker,
   }
 ) {
   const { ledger, owner } = fx;
 
-  // createPositions is onlyOwner
-  await ledger.connect(owner).createPositions(marketId, positions);
+  // ---- Create positions + ERC20 mirrors (Back & Lay) ----
+  const tx = await ledger.connect(owner).createPositions(marketId, positions);
+  await tx.wait();
+
   const positionIds = await ledger.getMarketPositions(marketId);
   expect(positionIds.length).to.equal(positions.length);
 
+  // Base meta for all positions
   for (let i = 0; i < positionIds.length; i++) {
     const pid = positionIds[i];
+    const p   = positions[i];
 
-    const [posName, posTicker] = await ledger.getPositionDetails(marketId, pid);
-    expect(posName).to.equal(positions[i].name);
-    expect(posTicker).to.equal(positions[i].ticker);
+    const baseName   = await ledger.erc20BaseName(marketId, pid);
+    const baseSymbol = await ledger.erc20BaseSymbol(marketId, pid);
 
-    const symbol   = await ledger.erc20Symbol(marketId, pid);
-    const fullName = await ledger.erc20Name(marketId, pid);
+    expect(baseName).to.equal(`${p.name} in ${marketName}`);
+    expect(baseSymbol).to.equal(`${p.ticker}-${marketTicker}`);
+  }
 
-    expect(symbol).to.equal(`${positions[i].ticker}-${marketTicker}`);
-    expect(fullName).to.equal(`${positions[i].name} in ${marketName}`);
+  // Extra Back/Lay sanity for the first position
+  if (positionIds.length > 0) {
+    const pid0 = positionIds[0];
+    const p0   = positions[0];
+
+    const backName   = await ledger.erc20NameForSide(marketId, pid0, true);
+    const backSymbol = await ledger.erc20SymbolForSide(marketId, pid0, true);
+    const layName    = await ledger.erc20NameForSide(marketId, pid0, false);
+    const laySymbol  = await ledger.erc20SymbolForSide(marketId, pid0, false);
+
+    expect(backName).to.equal(`Back ${p0.name} in ${marketName}`);
+    expect(backSymbol).to.equal(`B-${p0.ticker}-${marketTicker}`);
+
+    expect(layName).to.equal(`Lay ${p0.name} in ${marketName}`);
+    expect(laySymbol).to.equal(`L-${p0.ticker}-${marketTicker}`);
   }
 }
 
+
 /**
- * Creates positions one-by-one using staticCall to discover
- * (positionId, backToken, layToken), then checks for the Back mirror:
- *  - getERC20PositionMeta wiring
- *  - erc20Name / erc20Symbol
- *  - totalSupply == 0, balances == 0 for owner + trader
+ * Static meta + zero balances:
+ *  - checks base naming,
+ *  - ERC20 Back & Lay names/symbols,
+ *  - totalSupply == 0 for both mirrors (no ISC, no trades),
+ *  - balances == 0 for owner + trader.
  */
 async function expectPositionsStaticMetaAndZeroBalances(
   fx,
   {
     marketId,
-    teams,
+    teams,       // [{ name, ticker }, ...]
     marketName,
     marketTicker,
   }
 ) {
   const { ledger, owner, trader } = fx;
 
-  const created = [];
+  // ---- Create positions + ERC20 mirrors (Back & Lay) ----
+  const tx = await ledger.connect(owner).createPositions(marketId, teams);
+  await tx.wait();
 
-  for (const t of teams) {
-    // staticCall via owner (createPosition is onlyOwner)
-    const [positionId, backToken, layToken] =
-      await ledger.connect(owner).createPosition.staticCall(
-        marketId,
-        t.name,
-        t.ticker
-      );
-
-    const tx = await ledger
-      .connect(owner)
-      .createPosition(marketId, t.name, t.ticker);
-    await tx.wait();
-
-    created.push({ positionId, backToken, layToken, ...t });
-  }
-
-  // Sanity: market positions list matches count
   const positionIds = await ledger.getMarketPositions(marketId);
   expect(positionIds.length).to.equal(teams.length);
 
-  for (let i = 0; i < created.length; i++) {
-    const { positionId, backToken, name, ticker } = created[i];
+  for (let i = 0; i < positionIds.length; i++) {
+    const pid = positionIds[i];
+    const t   = teams[i];
 
-    // 1) ERC20PositionMeta wiring (Back mirror)
-    const [
-      registered,
-      mId,
-      pId,
-      isBack,
-      posName,
-      posTicker,
-      mName,
-      mTicker,
-    ] = await ledger.getERC20PositionMeta(backToken);
+    // Base naming from ledger (no Back/Lay prefix)
+    const baseName   = await ledger.erc20BaseName(marketId, pid);
+    const baseSymbol = await ledger.erc20BaseSymbol(marketId, pid);
 
-    expect(registered).to.equal(true);
-    expect(mId).to.equal(marketId);
-    expect(pId).to.equal(positionId);
-    expect(isBack).to.equal(true); // we’re checking the Back token here
-    expect(posName).to.equal(name);
-    expect(posTicker).to.equal(ticker);
-    expect(mName).to.equal(marketName);
-    expect(mTicker).to.equal(marketTicker);
+    expect(baseName).to.equal(`${t.name} in ${marketName}`);
+    expect(baseSymbol).to.equal(`${t.ticker}-${marketTicker}`);
 
-    // 2) name / symbol helpers (base, side-agnostic)
-    const erc20Name   = await ledger.erc20Name(marketId, positionId);
-    const erc20Symbol = await ledger.erc20Symbol(marketId, positionId);
+    // ERC20 clones wired for Back & Lay
+    const backTokenAddr = await ledger.getBackPositionERC20(marketId, pid);
+    const layTokenAddr  = await ledger.getLayPositionERC20(marketId, pid);
 
-    expect(erc20Name).to.equal(`${name} in ${marketName}`);
-    expect(erc20Symbol).to.equal(`${ticker}-${marketTicker}`);
+    expect(backTokenAddr).to.properAddress;
+    expect(layTokenAddr).to.properAddress;
 
-    // 3) supply / balances (no trades yet)
-    const totalSupply = await ledger.erc20TotalSupply(backToken);
-    const ownerBal    = await ledger.erc20BalanceOf(backToken, owner.address);
-    const traderBal   = await ledger.erc20BalanceOf(backToken, trader.address);
+    const BackToken = await ethers.getContractAt("PositionERC20", backTokenAddr);
+    const LayToken  = await ethers.getContractAt("PositionERC20", layTokenAddr);
 
-    expect(totalSupply).to.equal(0n);
-    expect(ownerBal).to.equal(0n);
-    expect(traderBal).to.equal(0n);
+    const backName   = await BackToken.name();
+    const backSymbol = await BackToken.symbol();
+    const layName    = await LayToken.name();
+    const laySymbol  = await LayToken.symbol();
+
+    // 🔵 Back expectations
+    expect(backName).to.equal(`Back ${t.name} in ${marketName}`);
+    expect(backSymbol).to.equal(`B-${t.ticker}-${marketTicker}`);
+
+    // 🔴 Lay expectations
+    expect(layName).to.equal(`Lay ${t.name} in ${marketName}`);
+    expect(laySymbol).to.equal(`L-${t.ticker}-${marketTicker}`);
+
+    // Zero supply & balances (no ISC, no trades in these tests)
+    const backSupply = await BackToken.totalSupply();
+    const laySupply  = await LayToken.totalSupply();
+
+    expect(backSupply).to.equal(0n);
+    expect(laySupply).to.equal(0n);
+
+    const addrsToCheck = [owner.address, trader.address];
+    for (const addr of addrsToCheck) {
+      const bBal = await BackToken.balanceOf(addr);
+      const lBal = await LayToken.balanceOf(addr);
+
+      expect(bBal).to.equal(0n);
+      expect(lBal).to.equal(0n);
+    }
   }
 }
+
 
 module.exports = {
   createMarketWithDetails,

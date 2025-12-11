@@ -16,97 +16,68 @@ async function expectGasForMarketWithPositions(
     marketName,
     marketTicker,
     dmmAddress,
-    iscAmount = 0n,
+    iscAmount,
     positions,
   }
 ) {
   const { ledger, owner } = fx;
 
-  // Make sure the DMM is allowed before creating the market
+  // Allow DMM if needed
   await ledger.connect(owner).allowDMM(dmmAddress, true);
 
-  // Create market (NEW SIGNATURE)
-  const createMarketTx = await ledger.createMarket(
+  // ---- create market ----
+  const txMarket = await ledger.createMarket(
     marketName,
     marketTicker,
-    dmmAddress,          // dmm
-    iscAmount,           // iscAmount
-    false,               // doesResolve (gas test non-resolving)
-    ethers.ZeroAddress,  // oracle
-    "0x",                // oracleParams
-    0,                   // feeBps
-    owner.address,       // marketCreator
-    [],                  // feeWhitelistAccounts
-    false                // hasWhitelist
+    dmmAddress,
+    iscAmount,
+    false,             // doesResolve
+    ethers.ZeroAddress,
+    "0x",
+    0,                 // feeBps
+    owner.address,     // marketCreator
+    [],                // feeWhitelistAccounts
+    false              // hasWhitelist
   );
-  const createMarketReceipt = await createMarketTx.wait();
-  console.log(
-    "createMarket gas used:",
-    createMarketReceipt.gasUsed.toString()
-  );
+  const rcMarket = await txMarket.wait();
 
   const markets = await ledger.getMarkets();
   expect(markets.length).to.equal(1);
   const marketId = markets[0];
 
-  // Verify market details
-  const [marketNameOnChain, marketTickerOnChain] =
-    await ledger.getMarketDetails(marketId);
-  expect(marketNameOnChain).to.equal(marketName);
-  expect(marketTickerOnChain).to.equal(marketTicker);
-
-  // Create positions in batch (ONLY OWNER)
-  const createPositionsTx = await ledger
-    .connect(owner)
-    .createPositions(marketId, positions);
-  const createPositionsReceipt = await createPositionsTx.wait();
   console.log(
-    `createPositions (${positions.length} positions) gas used:`,
-    createPositionsReceipt.gasUsed.toString()
+    `[gas] createMarket ( "${marketName}" / ${positions.length} planned positions ): ${rcMarket.gasUsed}`
   );
 
-  // Verify positions created
+  // ---- create positions ----
+
+  const txPos = await ledger.createPositions(marketId, positions);
+  const rcPos = await txPos.wait();
+
+  console.log(
+    `[gas] createPositions(${positions.length}): ${rcPos.gasUsed}`
+  );
+
   const positionIds = await ledger.getMarketPositions(marketId);
   expect(positionIds.length).to.equal(positions.length);
 
-  // Spot-check up to 3 positions & ERC20 wiring
-  for (let i = 0; i < Math.min(3, positions.length); i++) {
+  // ---- base name / symbol checks (no Back/Lay prefix) ----
+
+  for (let i = 0; i < positionIds.length; i++) {
     const pid = positionIds[i];
+    const p   = positions[i];
 
-    const [posName, posTicker] =
-      await ledger.getPositionDetails(marketId, pid);
-    expect(posName).to.equal(positions[i].name);
-    expect(posTicker).to.equal(positions[i].ticker);
+    const baseName   = await ledger.erc20BaseName(marketId, pid);
+    const baseSymbol = await ledger.erc20BaseSymbol(marketId, pid);
 
-    const erc20Name   = await ledger.erc20Name(marketId, pid);
-    const erc20Symbol = await ledger.erc20Symbol(marketId, pid);
-
-    expect(erc20Name).to.equal(
-      `${positions[i].name} in ${marketName}`
-    );
-    expect(erc20Symbol).to.equal(
-      `${positions[i].ticker}-${marketTicker}`
-    );
+    expect(baseName).to.equal(`${p.name} in ${marketName}`);
+    expect(baseSymbol).to.equal(`${p.ticker}-${marketTicker}`);
   }
-
-  const totalGas =
-    createMarketReceipt.gasUsed + createPositionsReceipt.gasUsed;
-  console.log(
-    "Total gas for market + positions:",
-    totalGas.toString()
-  );
-  console.log(
-    "Average gas per position:",
-    (createPositionsReceipt.gasUsed / BigInt(positions.length)).toString()
-  );
-
-  return {
-    marketId,
-    positionIds,
-    gasCreateMarket: createMarketReceipt.gasUsed,
-    gasCreatePositions: createPositionsReceipt.gasUsed,
-  };
 }
+
+module.exports = {
+  expectGasForMarketWithPositions,
+};
 
 // ──────────────────────────────────────
 // Shared hammer helpers

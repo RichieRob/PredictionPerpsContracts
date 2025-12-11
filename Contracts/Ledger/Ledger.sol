@@ -24,6 +24,9 @@ import "./LedgerLibraries/6_ClaimsLib.sol";
 
 import "./LedgerLibraries/8_PpUSDCBridgeLib.sol";
 
+import "./LedgerLibraries/2_ERC20NamingLib.sol";
+
+
 struct PositionInfo {
     uint256 positionId;
     bool    isBack; // true = Back mirror, false = Lay mirror
@@ -607,74 +610,66 @@ function batchClaimWinnings(address user, uint256[] calldata marketIds) external
         );
     }
 
-    // -----------------------------------------------------------------------
-    // ERC20 Names
+       // -----------------------------------------------------------------------
+    // ERC20 Names / Symbols (thin wrappers around ERC20NamingLib)
     // -----------------------------------------------------------------------
 
     /// @notice Base name for a position (without Back/Lay prefix).
-    ///         Used as the underlying descriptor for both mirrors.
-    function erc20Name(uint256 marketId, uint256 positionId)
-        public
-        view
-        returns (string memory)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        string memory marketName   = s.marketNames[marketId];
-        string memory positionName = s.positionNames[marketId][positionId];
-
-        return string.concat(positionName, " in ", marketName);
-    }
-
-    /// @notice Base symbol for a position (without B-/L- prefix).
-    ///         Used as the underlying descriptor for both mirrors.
-    function _erc20Symbol(uint256 marketId, uint256 positionId)
-        internal
-        view
-        returns (string memory)
-    {
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        string memory marketTicker   = s.marketTickers[marketId];
-        string memory positionTicker = s.positionTickers[marketId][positionId];
-
-        return string.concat(positionTicker, "-", marketTicker);
-    }
-
-    function erc20Symbol(uint256 marketId, uint256 positionId)
+    /// e.g. "Arsenal in Premier League Winner"
+    function erc20BaseName(uint256 marketId, uint256 positionId)
         external
         view
         returns (string memory)
     {
-        return _erc20Symbol(marketId, positionId);
+        return ERC20NamingLib.baseName(marketId, positionId);
     }
 
-    /// @notice Full ERC20 name for a specific side (Back / Lay).
-    /// e.g. "Back YES in Election 2025" / "Lay YES in Election 2025".
+    /// @notice Base symbol for a position (without Back/Lay prefix).
+    /// e.g. "ARS-EPL24"
+    function erc20BaseSymbol(uint256 marketId, uint256 positionId)
+        external
+        view
+        returns (string memory)
+    {
+        return ERC20NamingLib.baseSymbol(marketId, positionId);
+    }
+
+    /// @notice Full ERC20 name for a specific side (Back / Lay) by IDs.
+    /// e.g. "Back Arsenal in Premier League Winner"
     function erc20NameForSide(
         uint256 marketId,
         uint256 positionId,
         bool    isBack
     ) external view returns (string memory) {
-        string memory base = erc20Name(marketId, positionId);
-        if (isBack) {
-            return string.concat("Back ", base);
-        } else {
-            return string.concat("Lay ", base);
-        }
+        return ERC20NamingLib.nameForSide(marketId, positionId, isBack);
     }
 
-    /// @notice Full ERC20 symbol for a specific side (Back / Lay).
-    /// e.g. "B-YES-ELEC25" / "L-YES-ELEC25".
+    /// @notice Full ERC20 symbol for a specific side (Back / Lay) by IDs.
+    /// e.g. "B-ARS-EPL24" / "L-ARS-EPL24"
     function erc20SymbolForSide(
         uint256 marketId,
         uint256 positionId,
         bool    isBack
     ) external view returns (string memory) {
-        string memory base = _erc20Symbol(marketId, positionId);
-        if (isBack) {
-            return string.concat("B-", base);
-        } else {
-            return string.concat("L-", base);
-        }
+        return ERC20NamingLib.symbolForSide(marketId, positionId, isBack);
+    }
+
+    /// @notice Name for a specific mirror token (Back or Lay) by token address.
+    function erc20NameForToken(address token)
+        external
+        view
+        returns (string memory)
+    {
+        return ERC20NamingLib.nameByToken(token);
+    }
+
+    /// @notice Symbol for a specific mirror token (Back or Lay) by token address.
+    function erc20SymbolForToken(address token)
+        external
+        view
+        returns (string memory)
+    {
+        return ERC20NamingLib.symbolByToken(token);
     }
 
     // -----------------------------------------------------------------------

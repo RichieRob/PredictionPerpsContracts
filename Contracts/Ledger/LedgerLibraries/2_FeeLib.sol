@@ -65,6 +65,9 @@ library FeeLib {
         address dmm,
         bool    hasWhitelist        // true = whitelist enabled, false = no whitelist
     ) internal {
+
+        // if 0 fees haswhitelist should be false and feeWhiteListAccounts should be empty. 
+
         StorageLib.Storage storage s = StorageLib.getStorage();
 
         FeesConfig storage cfg = s.feesConfig[marketId];
@@ -136,7 +139,7 @@ library FeeLib {
             feeCreator  = feeBase - feeProtocol;
         }
 
-        // 5) Debit payer's free collateral (reverts if insufficient)
+        // 5) Debit account's free collateral (reverts if insufficient)
         s.realFreeCollateral[account] -= feeBase;
 
         // 6) Credit creator

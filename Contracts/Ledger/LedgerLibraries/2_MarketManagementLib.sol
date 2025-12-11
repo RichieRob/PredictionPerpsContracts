@@ -44,57 +44,75 @@ library MarketManagementLib {
     ///      - sets the market as expanding (positions can be added)
     ///      - initialises FeesConfig, including `creator`
     function createMarket(
-        string memory name,
-        string memory ticker,
-        address dmm,
-        uint256 iscAmount,
-        bool    doesResolve,
-        address oracle,
-        bytes   calldata oracleParams,
-        uint16  feeBps,
-        address marketCreator,
-        address[] memory feeWhitelistAccounts,
-        bool    hasWhitelist
-    ) internal returns (uint256 marketId) {
-        StorageLib.Storage storage s = StorageLib.getStorage();
+    string memory name,
+    string memory ticker,
+    address dmm,
+    uint256 iscAmount,
+    bool    doesResolve,
+    address oracle,
+    bytes   calldata oracleParams,
+    uint16  feeBps,
+    address marketCreator,
+    address[] memory feeWhitelistAccounts,
+    bool    hasWhitelist
+) internal returns (uint256 marketId) {
+    StorageLib.Storage storage s = StorageLib.getStorage();
 
-        // Assign new market id
-        marketId = s.allMarkets.length;
-        s.allMarkets.push(marketId);
+    // ------------------------------------------------------------
+    // Sanity restrictions
+    // ------------------------------------------------------------
 
-        // Basic metadata
-        s.marketNames[marketId]   = name;
-        s.marketTickers[marketId] = ticker;
+    // Resolving markets cannot have DMM
+    require(!doesResolve || dmm == address(0), "Resolve market cannot have DMM");
 
-        // DMM / synthetic collateral
-        s.marketToDMM[marketId]         = dmm;
-        s.syntheticCollateral[marketId] = iscAmount;
+    // Resolving markets cannot have synthetic collateral
+    require(!doesResolve || iscAmount == 0, "Resolve market cannot have ISC");
 
-        // Resolution config
-        s.doesResolve[marketId]        = doesResolve;
-        s.marketOracle[marketId]       = oracle;
-        s.marketOracleParams[marketId] = oracleParams;
-
-        // Market starts in "expanding" mode so positions can be added
-        s.isExpanding[marketId] = true;
-
-        // Initialise fee config + creator + optional whitelist
-        FeeLib.initMarketFees(
-            marketId,
-            feeBps,
-            marketCreator,
-            feeWhitelistAccounts,
-            dmm,
-            hasWhitelist
-        );
-
-        emit MarketCreated(marketId, name, ticker);
-
-        // Informational: synthetic line for DMM, if any
-        if (iscAmount > 0 && dmm != address(0)) {
-            emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
-        }
+    // If zero fee → whitelist must be disabled and empty
+    if (feeBps == 0) {
+        require(!hasWhitelist, "Whitelist disabled when zero fees");
+        require(feeWhitelistAccounts.length == 0, "No whitelist accounts with zero fees");
     }
+
+    // If whitelist disabled → must not supply whitelist accounts
+    if (!hasWhitelist) {
+        require(feeWhitelistAccounts.length == 0, "Whitelist disabled but accounts supplied");
+    }
+
+    // ------------------------------------------------------------
+    // Assign new market id
+    // ------------------------------------------------------------
+    marketId = s.allMarkets.length;
+    s.allMarkets.push(marketId);
+
+    s.marketNames[marketId]   = name;
+    s.marketTickers[marketId] = ticker;
+
+    s.marketToDMM[marketId]         = dmm;
+    s.syntheticCollateral[marketId] = iscAmount;
+
+    s.doesResolve[marketId]        = doesResolve;
+    s.marketOracle[marketId]       = oracle;
+    s.marketOracleParams[marketId] = oracleParams;
+
+    s.isExpanding[marketId] = true;
+
+    FeeLib.initMarketFees(
+        marketId,
+        feeBps,
+        marketCreator,
+        feeWhitelistAccounts,
+        dmm,
+        hasWhitelist
+    );
+
+    emit MarketCreated(marketId, name, ticker);
+
+    if (iscAmount > 0 && dmm != address(0)) {
+        emit SyntheticLiquidityCreated(marketId, iscAmount, dmm);
+    }
+}
+
 
     // -------------------------------------------------------------
     //  INTERNAL GUARD: only market creator

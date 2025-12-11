@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./1_StorageLib.sol";
 import "./6_ClaimsLib.sol";
+import "./2_FeeLib.sol";
 
 library AllocateCapitalLib {
     struct CapitalDeltas {
@@ -96,27 +97,12 @@ library AllocateCapitalLib {
             }
         }
 
+    
         // ─────────────────────────────────────────────
-        // Update netAlloc high watermark for this (account, marketId)
-        // netAlloc = USDCSpent - redeemedUSDC
+        // Apply HWM-based fees (if any) for this account/market
         // ─────────────────────────────────────────────
-        {
-            uint256 spent    = s.USDCSpent[account][marketId];
-            uint256 redeemed = s.redeemedUSDC[account][marketId];
+        FeeLib.applyNetAllocationFee(s, account, marketId);
 
-            if (spent > redeemed) {
-                uint256 currentNet =
-                    spent - redeemed;
-                uint256 prevHWM =
-                    s.netUSDCAllocationHighWatermark[account][marketId];
-
-                if (currentNet > prevHWM) {
-                    s.netUSDCAllocationHighWatermark[account][marketId] =
-                        currentNet;
-                }
-            }
-            // If spent <= redeemed, netAlloc <= 0 → we don't move the HWM.
-        }
     }
 
     function _applyGlobalDeltas(

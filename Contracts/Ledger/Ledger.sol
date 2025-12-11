@@ -775,4 +775,36 @@ function batchClaimWinnings(address user, uint256[] calldata marketIds) external
     {
         return LedgerInvariantViews.redeemabilityState(account, marketId);
     }
+
+    function debugFeeState(address account, uint256 marketId)
+        external
+        view
+        returns (
+            uint16 feeBps,
+            uint16 protocolShareBps,
+            bool   hasWhitelist,
+            bool   isWhitelisted,
+            uint256 spent,
+            uint256 redeemed,
+            uint256 hwm,
+            uint256 realFree
+        )
+    {
+        StorageLib.Storage storage s = StorageLib.getStorage();
+
+        FeesConfig storage cfg = s.feesConfig[marketId];
+
+        feeBps           = cfg.feeBps;
+        protocolShareBps = cfg.protocolShareBps;
+        hasWhitelist     = cfg.hasWhitelist;
+        isWhitelisted    = s.feeWhiteList[marketId][account];
+
+        spent    = s.USDCSpent[account][marketId];
+        redeemed = s.redeemedUSDC[account][marketId];
+        hwm      = s.netUSDCAllocationHighWatermark[account][marketId];
+
+        realFree = s.realFreeCollateral[account];
+    }
+
+
 }

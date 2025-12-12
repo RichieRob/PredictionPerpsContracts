@@ -387,11 +387,14 @@ function createMarket(
     // ─────────────────────────────────────────────
 
 
-    function getReserveExposure (address account, uint256 marketId) external view
-    returns (uint256){
-        StorageLib.Storage storage s = StorageLib.getStorage();
-        SolvencyLib.computeOtherExposure(s, account, marketId);
-    }
+   function getReserveExposure(address account, uint256 marketId)
+    external
+    view
+    returns (uint256)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    return SolvencyLib.computeOtherExposure(s, account, marketId);
+}
 
     function getPositionLiquidity(
         address account,

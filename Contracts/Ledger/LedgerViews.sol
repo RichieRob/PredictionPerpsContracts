@@ -12,7 +12,7 @@ interface ILedgerLite {
         view
         returns (string memory, string memory);
 
-    // NEW: separate mirrors for Back / Lay
+    // Separate mirrors for Back / Lay
     function getBackPositionERC20(uint256 marketId, uint256 positionId)
         external
         view
@@ -23,8 +23,9 @@ interface ILedgerLite {
         view
         returns (address);
 
-    // Shared symbol for the underlying position (same for Back/Lay)
-    function erc20Symbol(uint256 marketId, uint256 positionId)
+    // Base symbol for the underlying position (same for Back/Lay)
+    // This matches Ledger.sol: erc20BaseSymbol(uint256,uint256)
+    function erc20BaseSymbol(uint256 marketId, uint256 positionId)
         external
         view
         returns (string memory);
@@ -82,8 +83,10 @@ contract LedgerViews {
 
             (string memory name, string memory ticker) =
                 ledger.getPositionDetails(marketId, pid);
+
+            // Base symbol from Ledger (underlying position symbol, same for Back/Lay)
             string memory baseSymbol =
-                ledger.erc20Symbol(marketId, pid);
+                ledger.erc20BaseSymbol(marketId, pid);
 
             // Back mirror
             {
@@ -136,8 +139,10 @@ contract LedgerViews {
 
             (string memory name, string memory ticker) =
                 ledger.getPositionDetails(marketId, pid);
+
+            // Base symbol from Ledger (underlying position symbol, same for Back/Lay)
             string memory baseSymbol =
-                ledger.erc20Symbol(marketId, pid);
+                ledger.erc20BaseSymbol(marketId, pid);
 
             // Back mirror
             {

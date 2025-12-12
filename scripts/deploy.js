@@ -54,6 +54,10 @@ async function main() {
     [mockUSDC.target, mockAUSDC.target]
   );
 
+  const MockOracle = await ethers.getContractFactory("MockOracle");
+  const mockOracle = await deployWithLogs("MockOracle", MockOracle, deployer);
+
+
   const PpUSDC = await ethers.getContractFactory("PpUSDC");
   const ppUSDC = await deployWithLogs("PpUSDC", PpUSDC, deployer);
 
@@ -148,6 +152,7 @@ async function main() {
     MockUSDC: mockUSDC.target,
     MockAUSDC: mockAUSDC.target,
     MockAavePool: mockAavePool.target,
+    MockOracle: mockOracle.target, // <—
     PpUSDC: ppUSDC.target,
     Ledger: ledger.target,
     PositionERC20: positionImpl.target,
@@ -157,6 +162,7 @@ async function main() {
     SettlementLib: settlementLib.target,
     Permit2: PERMIT2_ADDRESS,
   };
+
 
   const filePath = path.join(__dirname, "../deployments.json");
   console.log("\nWriting deployments file to:", filePath);

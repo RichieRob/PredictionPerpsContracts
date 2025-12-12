@@ -68,3 +68,8 @@ library ResolutionLib {
         _resolveMarketCore(marketId, winningPositionId);
     }
 }
+
+
+//Updated needed - For markets that have an indefinite number of positions - they are expanding and have a bucked for other positons
+//Currently there is no way for the Oracle to resolve those markets
+// Suggestion is that we have a function which 1) Creates a new position on the ledger and then resolves to that position. We can do this in one transaction.

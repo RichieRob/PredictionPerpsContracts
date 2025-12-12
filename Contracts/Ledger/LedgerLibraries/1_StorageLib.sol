@@ -180,6 +180,11 @@ library StorageLib {
         //   - syntheticCollateral[marketId] is set once at market creation and never mutated.
         //   - ISC is never transferred or withdrawn; it only appears virtually in solvency checks.
         mapping(uint256 => address) marketToDMM; // marketId => account (immutable)
+
+        // Default engine to give pricing and transact against. Defaults to DMM when not set and DMM is present
+        mapping(uint256 => address) pricingMarketMaker;
+
+
         mapping(uint256 => uint256) syntheticCollateral; // marketId => ISC amount (immutable)
         mapping(uint256 => bool) isExpanding; // allows additional positions for expanding markets, ensures MMs solvent in "Other" position
 

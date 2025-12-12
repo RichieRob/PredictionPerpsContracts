@@ -113,6 +113,31 @@ library MarketManagementLib {
     }
 }
 
+// MM pricing stuff
+
+
+    function _getPricingMM(uint256 marketId)
+    internal
+    view
+    returns (address)
+{
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    address mm = s.pricingMarketMaker[marketId];
+    if (mm != address(0)) return mm;
+    return s.marketToDMM[marketId]; // legacy fallback
+}
+
+event PricingMarketMakerSet(uint256 indexed marketId, address indexed mm);
+
+function _setPricingMarketMaker(uint256 marketId, address mm) internal {
+    StorageLib.Storage storage s = StorageLib.getStorage();
+    _onlyMarketCreator(s, marketId);
+    require(mm != address(0), "mm=0");
+    s.pricingMarketMaker[marketId] = mm;
+    emit PricingMarketMakerSet(marketId, mm);
+}
+
+
 
     // -------------------------------------------------------------
     //  INTERNAL GUARD: only market creator

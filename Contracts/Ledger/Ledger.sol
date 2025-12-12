@@ -85,6 +85,22 @@ contract Ledger {
         allowedIntentContracts[intent] = allowed;
     }
 
+    //DEFAULT PRICING ENGING STUFF
+
+    function getPricingMM( uint256 marketId)
+    external
+    view
+    returns (address mm)
+{
+   mm = MarketManagementLib._getPricingMM(marketId);
+}
+
+
+function setPricingMarketMaker(uint256 marketId, address mm) external {
+   MarketManagementLib._setPricingMarketMaker(marketId, mm);
+}
+
+
     function settleIntentP2P(
         address trader,      // buyer / payer of quote
         address filler,      // seller / payee
@@ -176,7 +192,7 @@ function createMarket(
         Types.PositionMeta[] memory positions
     )
         external
-        onlyOwner
+        
         returns (
             uint256[] memory positionIds,
             address[] memory backTokens,

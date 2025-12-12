@@ -170,6 +170,24 @@ function initMarket(
         return _ls.getLayPriceWad(marketId, ledgerPositionId);
     }
 
+
+
+    /// 🔹 NEW: batched lay prices
+    function getAllLayPricesWad(uint256 marketId)
+        external
+        view
+        returns (PositionPrice[] memory prices)
+    {
+        uint256[] memory slots = _ls.listSlots(marketId);
+        prices = new PositionPrice[](slots.length);
+
+        for (uint256 i = 0; i < slots.length; i++) {
+            uint256 posId = slots[i];
+            prices[i].positionId = posId;
+            prices[i].priceWad   = _ls.getLayPriceWad(marketId, posId);
+        }
+    }
+
     /// @notice Informational reserve (“Other”) price in 1e18.
     function getReservePriceWad(
         uint256 marketId

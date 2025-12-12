@@ -655,7 +655,7 @@ function batchClaimWinnings(address user, uint256[] calldata marketIds) external
         return ERC20NamingLib.nameForSide(marketId, positionId, isBack);
     }
 
-    /// @notice Full ERC20 symbol for a specific side (Back / Lay) by IDs.
+    //// @notice Full ERC20 symbol for a specific side (Back / Lay) by IDs.
     /// e.g. "B-ARS-EPL24" / "L-ARS-EPL24"
     function erc20SymbolForSide(
         uint256 marketId,

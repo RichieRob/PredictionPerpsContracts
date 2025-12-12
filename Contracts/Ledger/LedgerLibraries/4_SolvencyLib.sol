@@ -54,6 +54,17 @@ library SolvencyLib {
         return netAlloc + s.layOffset[account][marketId] + int256(minTilt);
     }
 
+    //Helper Function so we can show exposure to the other positions
+    function computeOtherExposure(
+        StorageLib.Storage storage s,
+        address account,
+        uint256 marketId
+    ) internal view returns (uint256) {
+        int256 netAlloc = _netUSDCAllocationSigned(s, account, marketId);
+        return uint256 (netAlloc + s.layOffset[account][marketId] );
+    }
+    
+
     /// @notice Effective min shares after adding the synthetic line for the DMM.
     /// For normal accounts: effMin = realMinShares.
     /// For the DMM in this market: effMin = realMinShares + syntheticCollateral[marketId].

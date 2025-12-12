@@ -386,6 +386,13 @@ function createMarket(
     // Views / misc
     // ─────────────────────────────────────────────
 
+
+    function getReserveExposure (address account, uint256 marketId) external view
+    returns (uint256){
+        StorageLib.Storage storage s = StorageLib.getStorage();
+        SolvencyLib.computeOtherExposure(s, account, marketId);
+    }
+
     function getPositionLiquidity(
         address account,
         uint256 marketId,
@@ -481,6 +488,7 @@ function createMarket(
         name   = s.positionNames[marketId][positionId];
         ticker = s.positionTickers[marketId][positionId];
     }
+
 
     // --- allowlist for DMMs ---
 
